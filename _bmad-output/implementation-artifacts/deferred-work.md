@@ -24,6 +24,10 @@
   summary: Add real-TLS transport coverage for `verify_ssl` in `aiosecurityspy/tests/`, covering a certificate mismatch under `verify_ssl=True` and the bypass under `verify_ssl=False`.
   evidence: `tests/test_client_transport.py` exists specifically to prove the installed aiohttp honours the kwargs the client passes, and its docstring names `ssl` among them — but every test in it runs over plain HTTP, so `ssl=` is the one kwarg never exercised against TLS. The offline tests only assert the kwarg's value against a stub. Closing this needs a generated self-signed certificate and an HTTPS test server, which is a fixture-infrastructure task rather than a patch.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-event-stream-client-with-cr-framing-and-heartbeat.md`
+  summary: Establish the SecuritySpy server's timezone and stop defaulting `server_timezone` to UTC in `aiosecurityspy/src/aiosecurityspy/stream.py`, `events.py` and `client.event_stream()`.
+  evidence: Event-stream records carry a bare 14-character `YYYYMMDDHHMMSS` wall-clock time (research §3.2) and no endpoint in the research exposes the server's zone, so `parse_event_line()` interprets it as UTC unless the consumer says otherwise. A server running in any other zone therefore reports every event hours off, which is silently wrong rather than visibly broken — episode spans, capture correlation and Home Assistant timestamps all inherit the error. `raw_timestamp` preserves the original string so nothing is lost, but choosing the right default needs either a live server probe or a decision that the consumer must always supply the zone.
+
 ### DW-1: Follow-up review still recommended for 1-2-authenticated-client-with-injected-session after the damping cap was spent
 origin: review-budget-followup
 location: n/a
