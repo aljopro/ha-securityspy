@@ -1,0 +1,14 @@
+{
+  "actions": [
+    "Create the public GitHub repository aljopro/aiosecurityspy (MIT, no starter template, default branch main).",
+    "Move the aiosecurityspy/ subtree of ha-securityspy into that new repository as its root, push it to main, and confirm GitHub Actions runs the CI workflow green.",
+    "Register a PyPI trusted publisher for the project name aiosecurityspy at https://pypi.org/manage/account/publishing/ with owner aljopro, repository aiosecurityspy, workflow publish.yml, and environment pypi.",
+    "Create the GitHub Actions environment named pypi in the aiosecurityspy repository so the publish job can attach to it.",
+    "Tag v0.1.0 and publish a GitHub Release from it, then confirm the publish workflow uploaded aiosecurityspy 0.1.0 to PyPI via OIDC with no stored token.",
+    "Confirm the GitHub owner is aljopro; if not, correct the project URLs in aiosecurityspy/pyproject.toml and the links in aiosecurityspy/CHANGELOG.md before tagging."
+  ],
+  "parked_at": "2026-08-10",
+  "run_id": "20260810-075208-b5b3",
+  "spec_file": "_bmad-output/implementation-artifacts/spec-1-1-publishable-library-skeleton.md",
+  "story_key": "1-1-publishable-library-skeleton"
+}
