@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-08-10'
 status: 'done'
 baseline_revision: '160d53ca95f7fafd6cd227be9a99aa5457062047'
-final_revision: '803f692ca73ce4d50182a33d30f0fb38b46602ee'
+final_revision: '05a4df8'
 review_loop_iteration: 0
 followup_review_recommended: true  # 13 patches, 2 high; sticky pause and the widened constructor change public behaviour
 context:
