@@ -1,0 +1,110 @@
+# generated: 2026-08-09T22:17:18-05:00
+# last_updated: 2026-08-09T22:17:18-05:00
+# project: ha-securityspy
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+
+generated: 2026-08-09T22:17:18-05:00
+last_updated: 2026-08-09T22:17:18-05:00
+project: ha-securityspy
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  epic-1: backlog
+  1-1-publishable-library-skeleton: backlog
+  1-2-authenticated-client-with-injected-session: backlog
+  1-3-event-stream-client-with-cr-framing-and-heartbeat: backlog
+  1-4-capture-history-decoding: backlog
+  1-5-detection-episode-reducer: backlog
+  1-6-settings-arming-and-permission-decoding: backlog
+  1-7-credential-safe-diagnostics: backlog
+  epic-1-retrospective: optional
+  epic-2: backlog
+  2-1-add-a-securityspy-server-through-the-ui: backlog
+  2-2-connect-over-https-with-a-verification-toggle: backlog
+  2-3-cameras-appear-as-devices-under-one-server-hub: backlog
+  2-4-see-server-and-camera-health: backlog
+  2-5-know-when-a-securityspy-update-is-available: backlog
+  2-6-live-video-exists-but-stays-out-of-the-way: backlog
+  2-7-only-create-entities-the-user-is-permitted-to-use: backlog
+  2-8-re-enter-credentials-when-they-stop-working: backlog
+  2-9-change-connection-details-without-losing-history: backlog
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1-report-unavailable-rather-than-stale: backlog
+  3-2-recover-from-connection-loss-without-being-asked: backlog
+  3-3-log-problems-once-not-continuously: backlog
+  3-4-unload-and-reload-cleanly: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-spike-when-does-securityspy-write-classification-to-a-capture: backlog
+  4-2-per-class-last-seen-timestamps: backlog
+  4-3-correct-immediately-after-a-restart: backlog
+  4-4-recover-detections-missed-while-disconnected: backlog
+  4-5-latest-capture-as-a-fetchable-image: backlog
+  4-6-read-the-object-classes-on-the-latest-capture: backlog
+  4-7-save-the-most-recent-recording-to-a-file: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-per-class-presence: backlog
+  5-2-classification-event-with-peak-confidence: backlog
+  5-3-motion-presence-that-clears-itself: backlog
+  5-4-tune-detection-globally-and-per-camera: backlog
+  5-5-trigger-events-with-decoded-reasons: backlog
+  5-6-draft-the-blueprints-against-the-real-entity-surface: backlog
+  5-7-spike-custom-model-event-payload-shape: backlog
+  5-8-entities-for-custom-model-classes: backlog
+  epic-5-retrospective: optional
+  epic-6: backlog
+  6-1-arm-and-disarm-each-mode-independently: backlog
+  6-2-control-state-follows-the-server: backlog
+  6-3-see-which-schedule-governs-a-camera: backlog
+  6-4-enable-and-disable-a-camera: backlog
+  6-5-choose-which-classes-cause-recording: backlog
+  6-6-adjust-per-class-sensitivity: backlog
+  6-7-tell-the-user-when-per-class-triggering-is-off: backlog
+  epic-6-retrospective: optional
+  epic-7: backlog
+  7-1-install-from-hacs-as-a-custom-repository: backlog
+  7-2-import-a-working-automation-in-one-click: backlog
+  7-3-verify-bronze-in-ci-and-cut-the-release: backlog
+  7-4-reach-silver-then-announce: backlog
+  epic-7-retrospective: optional
