@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-08-10'
 status: 'done'
 baseline_revision: '50379c397d8bed3b837c783a91d2fb50a006d58d'
-final_revision: '05fada6'
+final_revision: '4e1f7cb'
 review_loop_iteration: 0
 followup_review_recommended: true  # 18 patches across the public surface, 8 behavioural, including expiry semantics and a public constant's type
 context:
