@@ -1,0 +1,219 @@
+"""Config flow for the SecuritySpy integration.
+
+The flow is UI-only: there is no YAML path and no discovery step. It validates
+the submitted connection details against the live server before an entry is
+created (``test-before-configure``) and keys the entry on the server's UUID and
+nothing else (AD-5), so re-adding the same server by a different address aborts
+rather than producing a second entry.
+
+Credentials are never logged, never interpolated into a message, and never
+appear in a form description (AD-13).
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any, Final
+
+import voluptuous as vol
+from aiosecurityspy import (
+    SecuritySpyAuthError,
+    SecuritySpyClient,
+    SecuritySpyConnectError,
+    SecuritySpyError,
+    SecuritySpyUnsupportedVersionError,
+    ServerInfo,
+)
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
+
+from .const import DEFAULT_PORT, DOMAIN
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from homeassistant.core import HomeAssistant
+
+_LOGGER: Final = logging.getLogger(__name__)
+
+#: Library error type -> `config.error` translation key. A tuple rather than a
+#: `dict` keyed by type, because matching is by `isinstance`: a future library
+#: subclass inherits its parent's message instead of falling through to
+#: `unknown`. The three are siblings, so the order carries no meaning.
+_ERROR_KEYS: Final[tuple[tuple[type[SecuritySpyError], str], ...]] = (
+    (SecuritySpyAuthError, "invalid_auth"),
+    (SecuritySpyUnsupportedVersionError, "unsupported_version"),
+    (SecuritySpyConnectError, "cannot_connect"),
+)
+
+
+def _error_key(err: SecuritySpyError) -> str:
+    """Map a library error to the translation key that explains it.
+
+    Args:
+        err: The error the library raised.
+
+    Returns:
+        A key in the ``config.error`` block. Anything this story does not model
+        becomes ``unknown``: a generic message beats a traceback and an aborted
+        flow.
+
+    """
+    for error_type, key in _ERROR_KEYS:
+        if isinstance(err, error_type):
+            return key
+    return "unknown"
+
+
+STEP_USER_DATA_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_HOST): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.TEXT, autocomplete="off")
+        ),
+        # `cv.port` bounds the value and keeps it an `int`; the library rejects a
+        # float or a `bool` port outright, and a number selector would hand it one.
+        vol.Required(CONF_PORT, default=DEFAULT_PORT): cv.port,
+        vol.Required(CONF_USERNAME): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.TEXT, autocomplete="username")
+        ),
+        vol.Required(CONF_PASSWORD): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
+        ),
+    }
+)
+
+
+def _build_client(hass: HomeAssistant, user_input: Mapping[str, Any]) -> SecuritySpyClient:
+    """Construct a client from submitted form values.
+
+    Kept separate from the request so the caller can tell a caller-side mistake
+    -- which the constructor rejects before any network call -- apart from a
+    server-side failure. Catching both around one ``await`` would report a
+    decoding bug as a bad hostname.
+
+    Args:
+        hass: The Home Assistant instance, used only for its shared session.
+        user_input: The submitted form values.
+
+    Raises:
+        ValueError: The host, port or credential is unusable.
+        TypeError: The port is not an integer.
+
+    Returns:
+        A client bound to the described server.
+
+    """
+    return SecuritySpyClient(
+        # inject-websession (Platinum): the config flow never builds a session.
+        async_get_clientsession(hass),
+        user_input[CONF_HOST],
+        user_input[CONF_PORT],
+        username=user_input[CONF_USERNAME],
+        password=user_input[CONF_PASSWORD],
+    )
+
+
+def _preserved_values(user_input: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Return the values worth re-showing after a recoverable error.
+
+    Everything the user typed is preserved except the password: a suggested
+    value is sent back to the browser in the flow result, and a credential that
+    need not make that round trip should not (AD-13). Retyping one field is a
+    smaller cost than a password echoed on every failed attempt.
+
+    Args:
+        user_input: The submitted form values, or ``None`` on first display.
+
+    Returns:
+        The values to suggest in the redisplayed form.
+
+    """
+    if user_input is None:
+        return {}
+    return {key: value for key, value in user_input.items() if key != CONF_PASSWORD}
+
+
+class SecuritySpyConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for SecuritySpy."""
+
+    VERSION = 1
+
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Handle the initial step, where the user describes their server.
+
+        Args:
+            user_input: The submitted form values, or ``None`` on first display.
+
+        Returns:
+            The created entry, an abort, or the form again with an error. A
+            recoverable failure always redisplays the form with the submitted
+            values intact rather than aborting the flow.
+
+        """
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            outcome = await self._async_probe(user_input)
+            if isinstance(outcome, str):
+                errors["base"] = outcome
+            else:
+                await self.async_set_unique_id(outcome.uuid)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=outcome.name, data=user_input)
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_USER_DATA_SCHEMA, _preserved_values(user_input)
+            ),
+            errors=errors,
+        )
+
+    async def _async_probe(self, user_input: Mapping[str, Any]) -> ServerInfo | str:
+        """Reach the described server, returning its info or an error key.
+
+        Failures are returned rather than raised so the step above stays a flat
+        read: every recoverable outcome redisplays the form, and none of them
+        aborts the flow.
+
+        Args:
+            user_input: The submitted form values.
+
+        Returns:
+            The validated :class:`ServerInfo`, or a key in the ``config.error``
+            translation block naming what went wrong.
+
+        """
+        try:
+            # The constructor rejects a host carrying a scheme, port or path, and
+            # a credential HTTP Basic auth cannot encode. Its messages never quote
+            # the offending value, and none is shown.
+            client = _build_client(self.hass, user_input)
+        except TypeError, ValueError:
+            return "invalid_host"
+
+        try:
+            server = await client.async_get_server_info()
+        except SecuritySpyError as err:
+            return _error_key(err)
+        except Exception:
+            # The flow must never abort on a live call. Anything the library did
+            # not wrap -- a transport error it missed, a decoding bug -- would
+            # otherwise escape as a traceback and end the flow. The user gets the
+            # generic message and keeps their form instead.
+            _LOGGER.exception("Unexpected error validating the SecuritySpy server")
+            return "unknown"
+
+        if not server.uuid:
+            # Fail closed. The UUID becomes this entry's permanent identity and
+            # every future device identifier (AD-5); two UUID-less servers would
+            # collapse into a single entry, and inventing a fallback identity is
+            # what AD-5 forbids.
+            return "no_server_uuid"
+        return server

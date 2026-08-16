@@ -1,0 +1,13 @@
+{
+  "domain": "securityspy",
+  "name": "SecuritySpy",
+  "codeowners": ["@aljopro"],
+  "config_flow": true,
+  "documentation": "https://github.com/aljopro/ha-securityspy",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/aljopro/ha-securityspy/issues",
+  "quality_scale": "bronze",
+  "requirements": ["aiosecurityspy==0.2.0"],
+  "version": "0.1.0"
+}

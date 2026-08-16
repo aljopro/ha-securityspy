@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to SecuritySpy",
+        "description": "Enter the address of the Mac running SecuritySpy and a SecuritySpy web server account to connect with.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password"
+        },
+        "data_description": {
+          "host": "The hostname or IP address of the Mac running SecuritySpy, on its own - no http://, no port and no path.",
+          "port": "SecuritySpy's web server port. Find it in SecuritySpy under Preferences > Web Server.",
+          "username": "A SecuritySpy web server account. Home Assistant only creates the entities this account is permitted to use.",
+          "password": "The password for that SecuritySpy account."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach SecuritySpy at that address. Check that the Mac is awake, that the host and port are right, and that SecuritySpy's web server is turned on under Preferences > Web Server.",
+      "invalid_auth": "SecuritySpy rejected that username or password. Check the account under Preferences > Web Server > Accounts, then enter it again.",
+      "unsupported_version": "That SecuritySpy version is too old for this integration, or it did not answer in a format this integration understands. Update SecuritySpy to version 6.0 or later and try again.",
+      "invalid_host": "That host or account cannot be used. Enter the host on its own - no http://, no port and no path - and use an account whose username has no colon and whose username and password contain no non-Western characters.",
+      "no_server_uuid": "That server did not report a unique ID, which this integration needs to tell your servers apart permanently. Update SecuritySpy to the latest version and try again.",
+      "unknown": "SecuritySpy answered with an error this integration does not recognise. Check SecuritySpy's own log under Window > Log, then try again."
+    },
+    "abort": {
+      "already_configured": "This SecuritySpy server is already set up in Home Assistant. Its unique ID matches an existing entry, so it has been reached at a different address."
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Could not reach SecuritySpy. Check that the Mac is awake and that SecuritySpy's web server is turned on."
+    },
+    "invalid_auth": {
+      "message": "SecuritySpy rejected the stored username or password. Enter the account details again."
+    },
+    "unsupported_version": {
+      "message": "This SecuritySpy version is too old for this integration. Update SecuritySpy to version 6.0 or later."
+    },
+    "invalid_stored_data": {
+      "message": "The saved connection details for this SecuritySpy server cannot be used. Remove the integration and add it again."
+    },
+    "unknown": {
+      "message": "SecuritySpy answered with an error this integration does not recognise. Check SecuritySpy's own log under Window > Log."
+    }
+  }
+}

@@ -58,7 +58,7 @@ development_status:
   1-7-credential-safe-diagnostics: backlog
   epic-1-retrospective: optional
   epic-2: backlog
-  2-1-add-a-securityspy-server-through-the-ui: backlog
+  2-1-add-a-securityspy-server-through-the-ui: done
   2-2-connect-over-https-with-a-verification-toggle: backlog
   2-3-cameras-appear-as-devices-under-one-server-hub: backlog
   2-4-see-server-and-camera-health: backlog
