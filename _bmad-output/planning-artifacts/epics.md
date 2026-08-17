@@ -243,6 +243,8 @@ A Python developer can talk to a SecuritySpy server from an ordinary script — 
 
 **Implementation notes:** Greenfield scaffold with no starter template — `src/` layout, hatchling, uv, ruff, mypy `--strict`, GitHub Actions with PyPI trusted-publisher OIDC. Owns CR-only stream framing (the single most likely implementation bug), `caplist` field decoding, permission and trigger bitmask decoding, the schedule model, the settings read/write asymmetry, the pure episode reducer, and the diagnostics anonymizer. Destructive and remote-execution endpoints are excluded from the public surface entirely. Validated by SM-9: installable from PyPI and usable in a script with no Home Assistant present.
 
+Stories 1.8–1.10 were added after 1.1–1.7 landed, when auditing the built library against Epics 2, 4 and 6 showed the health fields, the cheap `camStatus` poll, the capture media endpoints, `schedule-list`, and the camera-enable write had never been assigned to any story — story 1.2's "at minimum the server UUID, version, camera count, and the camera list" was implemented literally and nothing downstream claimed the rest. Because the architecture forbids the integration from knowing any wire format or endpoint URL, those absences are hard blockers rather than inconveniences: they gate Stories 2.4, 2.5, 4.5, 4.7, 6.3 and 6.4, and each must land before its consumer is dispatched.
+
 ### Epic 2: Connect and Model
 
 A user adds their SecuritySpy server through the Home Assistant UI — over HTTPS, with a verification toggle for the LAN-IP certificate mismatch — and their cameras appear as correctly-named devices beneath one server hub, with no manual renaming and no entity named after an IP address. Only controls their SecuritySpy account can actually use are created. This is the epic where nothing user-facing exists before it and where the identity decisions are made that can never be changed without orphaning every customization a user has built.
@@ -478,6 +480,80 @@ So that a user posting a diagnostics dump to a public forum does not publish the
 **Given** the anonymizer
 **When** a new credential-shaped key is returned by a future SecuritySpy version
 **Then** redaction is driven by a single declared key set that can be extended in one place
+
+### Story 1.8: Server and camera health decoding
+
+As a Python developer,
+I want the server's health figures and each camera's live health counters as typed model fields, plus the cheap status poll,
+So that a consumer can report health without parsing a 27 KB payload on every cycle. *(FR-41; enables FR-23, FR-24)*
+
+**Acceptance Criteria:**
+
+**Given** a `++systemInfo` body
+**When** it is decoded
+**Then** `ServerInfo` additionally carries CPU usage, memory pressure, certificate expiry, and the offered update version, each typed and each `None` when the server omits it
+**And** the offered update version is distinct from the installed version and is absent rather than empty when no update is offered
+
+**Given** the same body
+**When** a camera is decoded
+**Then** `Camera` additionally carries current frame rate, data rate, and the last error with its description, each typed and each `None` when absent
+**And** no existing field of `ServerInfo` or `Camera` changes name, type, or meaning
+
+**Given** a server whose health fields are missing, malformed, or negative where only a non-negative value is meaningful
+**When** they are decoded
+**Then** each falls back to `None` and the surrounding decode still succeeds, matching how the existing decoders already tolerate partial payloads
+
+**Given** the `++camStatus` endpoint, which returns roughly 794 bytes against `++systemInfo`'s 27 KB
+**When** the client is asked for camera status
+**Then** it returns a typed per-camera result carrying the number, enabled, online, open, and error fields that endpoint provides
+**And** `enabled`, `online`, and `open` are preserved as three distinct states rather than collapsed into one
+**And** the endpoint URL and its response shape are known only inside the library
+
+### Story 1.9: Capture media fetch
+
+As a Python developer,
+I want to fetch a capture's preview image and download its underlying file,
+So that a consumer can serve an image and save a recording without constructing a SecuritySpy URL itself. *(FR-41; enables FR-9, FR-10, FR-44)*
+
+**Acceptance Criteria:**
+
+**Given** a `Capture`
+**When** its preview image is requested
+**Then** the client returns the JPEG bytes together with their content type
+**And** the caller supplies only the `Capture`, never a path, folder date, or query parameter
+
+**Given** a `Capture` for a recorded movie
+**When** its file is requested
+**Then** the client streams the bytes so a large recording is never held in memory in full
+**And** the bandwidth variant and the archive flag are selectable through typed arguments rather than raw query strings
+**And** nothing on the SecuritySpy server is deleted or modified by either call
+
+**Given** an account without file permission, or a capture the server no longer holds
+**When** either call is made
+**Then** it raises the library's own typed permission or connection error
+**And** no raw `aiohttp` exception escapes, and no credential appears in the message
+
+### Story 1.10: Schedule names and the camera enable write
+
+As a Python developer,
+I want schedules resolvable to their names and a camera's enabled state writable,
+So that a consumer can show which schedule governs a camera and take one out of service. *(FR-41; enables FR-15, FR-16)*
+
+**Acceptance Criteria:**
+
+**Given** a `++systemInfo` body carrying `schedule-list`
+**When** it is decoded
+**Then** the server's schedules are exposed as an id-to-name mapping, including both the built-in defaults and any the user defined
+**And** a camera's existing per-mode schedule ids resolve through it to names, with an unknown id resolving to `None` rather than raising
+
+**Given** a camera and a desired enabled state
+**When** the client is asked to write it
+**Then** only the enabled state is sent, and no unrelated camera setting is disturbed
+**And** the write uses the same verified partial-write mechanism as the existing settings path
+
+**Given** an account without the permission that write requires
+**When** it is attempted
+**Then** it raises the library's typed permission error rather than failing silently or reporting success
 
 ---
 

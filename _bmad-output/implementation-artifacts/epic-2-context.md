@@ -52,7 +52,8 @@ This epic makes the integration exist for a user for the first time: they add th
 
 ## Cross-Story Dependencies
 
-- Depends on Epic 1's library for the authenticated client, typed exception hierarchy, permission decoding, status/health models, and server metadata; nothing in this epic may re-implement those.
+- Depends on Epic 1's library for the authenticated client, typed exception hierarchy, permission decoding, and server metadata; nothing in this epic may re-implement those.
+- **Health and update data are NOT yet in the library.** Stories 1.1–1.7 delivered no server health fields (CPU, memory pressure, certificate expiry), no offered-update version, no per-camera health counters (frame rate, data rate, last error), and no `++camStatus` client method. Story **1.8** adds all of them and is a hard prerequisite for **2.4** and **2.5** — neither may be dispatched before it is done. Do not work around this: the invariant below forbids the integration from decoding wire formats itself, so there is no legal HA-side substitute.
 - Story 2.1 establishes the config entry, unique ID, and validation path that 2.2, 2.8, and 2.9 all extend; 2.3's identity scheme is a prerequisite for every entity-producing story here and in every later epic.
 - Story 2.7's gating helper is the mechanism later epics (arming, capture images, the download action) must consult; this epic owns the mechanism and proves it only on the entities that exist now.
 - The auth-failure counter in 2.8 spans both the poll path built here and the stream path built in Epic 3 — it must be designed to accept failures from both planes even before the stream exists.
