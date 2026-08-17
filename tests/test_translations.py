@@ -59,7 +59,14 @@ def test_no_unused_error_messages() -> None:
 
 @pytest.mark.parametrize(
     "exception_key",
-    ["cannot_connect", "invalid_auth", "invalid_stored_data", "unknown", "unsupported_version"],
+    [
+        "cannot_connect",
+        "invalid_auth",
+        "invalid_certificate",
+        "invalid_stored_data",
+        "unknown",
+        "unsupported_version",
+    ],
 )
 def test_every_setup_failure_has_a_message(exception_key: str) -> None:
     """Each translation key `async_setup_entry` raises with resolves to a string."""
@@ -67,8 +74,13 @@ def test_every_setup_failure_has_a_message(exception_key: str) -> None:
 
 
 def test_every_form_field_is_labelled_and_described() -> None:
-    """The user step labels and explains all four fields it collects."""
+    """The user step labels and explains every field it collects.
+
+    The field set is read off the schema rather than restated: a field added to
+    the form with no label would otherwise pass here and show a raw key in the
+    browser, which is the drift this module exists to catch.
+    """
+    fields = {str(marker) for marker in config_flow.STEP_USER_DATA_SCHEMA.schema}
     user_step = _load(STRINGS)["config"]["step"]["user"]
-    fields = {"host", "port", "username", "password"}
     assert set(user_step["data"]) == fields
     assert set(user_step["data_description"]) == fields

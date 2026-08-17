@@ -2,23 +2,24 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
 from aiosecurityspy import (
     SecuritySpyAuthError,
+    SecuritySpyCertificateError,
     SecuritySpyConnectError,
     SecuritySpyError,
     SecuritySpyUnsupportedVersionError,
 )
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import CONF_HOST
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_SSL, CONF_VERIFY_SSL
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.securityspy.const import DOMAIN
 
-from .conftest import MOCK_USER_INPUT, SERVER_NAME, SERVER_UUID
+from .conftest import MOCK_USER_INPUT, SERVER_NAME, SERVER_UUID, https_input
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -26,11 +27,20 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 
-def _add_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Register a config entry shaped exactly as the config flow creates one."""
+def _add_entry(hass: HomeAssistant, data: dict[str, Any] | None = None) -> MockConfigEntry:
+    """Register a config entry shaped exactly as the config flow creates one.
+
+    Args:
+        hass: The Home Assistant instance.
+        data: Entry data, defaulting to the plain-HTTP payload.
+
+    Returns:
+        The registered entry.
+
+    """
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data=MOCK_USER_INPUT,
+        data=MOCK_USER_INPUT if data is None else data,
         unique_id=SERVER_UUID,
         title=SERVER_NAME,
     )
@@ -147,6 +157,134 @@ async def test_setup_rejects_unusable_stored_data(
 
     assert entry.state is ConfigEntryState.SETUP_ERROR
     assert entry.error_reason_translation_key == "invalid_stored_data"
+
+
+@pytest.mark.parametrize(
+    ("data", "use_https", "verify_ssl"),
+    [
+        (MOCK_USER_INPUT, False, True),
+        (https_input(), True, True),
+        (https_input(verify_ssl=False), True, False),
+    ],
+    ids=["http", "https-verified", "https-unverified"],
+)
+async def test_setup_applies_the_stored_tls_choices(
+    hass: HomeAssistant,
+    mock_client_class: MagicMock,
+    data: dict[str, Any],
+    use_https: bool,  # noqa: FBT001 - parametrized flag
+    verify_ssl: bool,  # noqa: FBT001 - parametrized flag
+) -> None:
+    """Setup hands both stored flags to the client and to the session it uses.
+
+    The client is what Epic 3 spawns the event stream from, so a flag that
+    reached the entry but not the client would give the stream a different
+    transport than the one the user chose. The plain-HTTP row is here so a
+    hard-coded `use_https=True` cannot pass: it is the default a regression
+    would land on.
+    """
+    entry = _add_entry(hass, data)
+
+    with patch(
+        "custom_components.securityspy.async_get_clientsession"
+    ) as get_clientsession:  # the argument selects the session, so it is contract
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    kwargs = mock_client_class.call_args.kwargs
+    assert kwargs["use_https"] is use_https
+    assert kwargs["verify_ssl"] is verify_ssl
+    assert get_clientsession.call_args.kwargs == {"verify_ssl": verify_ssl}
+
+
+async def test_setup_warns_while_verification_is_disabled(
+    hass: HomeAssistant,
+    mock_client: MagicMock,  # noqa: ARG001 - keeps the client patched so setup succeeds
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Disabling verification leaves a record every time the entry loads.
+
+    The form describes the cost at decision time; nothing else would ever
+    mention it again, and the HTTP Basic credential rides on every request the
+    unverified connection makes.
+    """
+    entry = _add_entry(hass, https_input(verify_ssl=False))
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    warnings = [record for record in caplog.records if record.levelname == "WARNING"]
+    assert any("verification is disabled" in record.getMessage() for record in warnings)
+    assert not any(MOCK_USER_INPUT[CONF_PASSWORD] in record.getMessage() for record in warnings)
+
+
+async def test_setup_does_not_warn_about_verification_on_a_plain_http_entry(
+    hass: HomeAssistant,
+    mock_client: MagicMock,  # noqa: ARG001 - keeps the client patched so setup succeeds
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verification off without HTTPS is not a risk, and must not be reported as one.
+
+    Nothing in the form couples the two toggles, so this entry is submittable.
+    There is no certificate on a plain-HTTP connection, so the warning would
+    describe something the entry never does -- and a warning that cries wolf on
+    a safe configuration is what teaches the reader to skip it on the unsafe one.
+    """
+    entry = _add_entry(hass, {**MOCK_USER_INPUT, CONF_VERIFY_SSL: False})
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert not any(
+        "verification is disabled" in record.getMessage()
+        for record in caplog.records
+        if record.levelname == "WARNING"
+    )
+
+
+async def test_setup_rejects_stored_data_missing_a_field(
+    hass: HomeAssistant,
+    mock_client: MagicMock,  # noqa: ARG001 - keeps the client patched so only the read fails
+) -> None:
+    """An entry written before a field existed fails with a translated message.
+
+    A missing key is a `KeyError`, not the `ValueError` the client raises for a
+    value it dislikes, so without the guard it would escape `async_setup_entry`
+    as a raw traceback -- the one outcome the stored-data path promises not to
+    produce.
+    """
+    entry = _add_entry(
+        hass, {key: value for key, value in MOCK_USER_INPUT.items() if key != CONF_SSL}
+    )
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert entry.error_reason_translation_key == "invalid_stored_data"
+
+
+async def test_setup_names_a_certificate_failure(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """A certificate rejected at setup retries, with the certificate-specific message.
+
+    Order is the whole risk here: the library error subclasses
+    `SecuritySpyConnectError`, so a clause placed after its parent would make
+    this message unreachable and nothing would fail loudly.
+    """
+    mock_client.async_get_server_info.side_effect = SecuritySpyCertificateError(
+        "192.168.1.20", 8001, "SSLCertVerificationError"
+    )
+    entry = _add_entry(hass, https_input())
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # `NotReady`, not a permanent error: an expired certificate renews itself and
+    # the entry recovers without anyone touching Home Assistant.
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert entry.error_reason_translation_key == "invalid_certificate"
 
 
 async def test_setup_retries_on_an_unmodelled_library_error(

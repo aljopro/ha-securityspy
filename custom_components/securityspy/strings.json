@@ -8,21 +8,26 @@
           "host": "Host",
           "port": "Port",
           "username": "Username",
-          "password": "Password"
+          "password": "Password",
+          "ssl": "Connect over HTTPS",
+          "verify_ssl": "Verify the certificate"
         },
         "data_description": {
           "host": "The hostname or IP address of the Mac running SecuritySpy, on its own - no http://, no port and no path.",
-          "port": "SecuritySpy's web server port. Find it in SecuritySpy under Preferences > Web Server.",
+          "port": "SecuritySpy's web server port. Find it in SecuritySpy under Preferences > Web Server. It is usually 8000 for HTTP and 8001 for HTTPS.",
           "username": "A SecuritySpy web server account. Home Assistant only creates the entities this account is permitted to use.",
-          "password": "The password for that SecuritySpy account."
+          "password": "The password for that SecuritySpy account.",
+          "ssl": "Turn this on if SecuritySpy's web server uses HTTPS. Remember to enter its HTTPS port above.",
+          "verify_ssl": "Only used when \"Connect over HTTPS\" is on. It checks that the server's certificate is valid and was issued for the address you entered. Turning it off means nothing proves the server is the one you think it is, and your password is sent to whatever answers that address, so only do it on a network you trust."
         }
       }
     },
     "error": {
-      "cannot_connect": "Could not reach SecuritySpy at that address. Check that the Mac is awake, that the host and port are right, and that SecuritySpy's web server is turned on under Preferences > Web Server.",
+      "cannot_connect": "Could not reach SecuritySpy at that address. Check that the Mac is awake, that the host and port are right, and that SecuritySpy's web server is turned on under Preferences > Web Server. If you turned on \"Connect over HTTPS\", check that the port is SecuritySpy's HTTPS port and not its HTTP one.",
       "invalid_auth": "SecuritySpy rejected that username or password. Check the account under Preferences > Web Server > Accounts, then enter it again.",
       "unsupported_version": "That SecuritySpy version is too old for this integration, or it did not answer in a format this integration understands. Update SecuritySpy to version 6.0 or later and try again.",
       "invalid_host": "That host or account cannot be used. Enter the host on its own - no http://, no port and no path - and use an account whose username has no colon and whose username and password contain no non-Western characters.",
+      "invalid_certificate": "SecuritySpy's certificate could not be verified. It may have expired, or - most often - it was issued for a hostname such as a dynamic DNS address, so connecting by IP address fails even though the server is fine. Enter the address the certificate was issued for, or turn off \"Verify the certificate\" to connect anyway.",
       "no_server_uuid": "That server did not report a unique ID, which this integration needs to tell your servers apart permanently. Update SecuritySpy to the latest version and try again.",
       "unknown": "SecuritySpy answered with an error this integration does not recognise. Check SecuritySpy's own log under Window > Log, then try again."
     },
@@ -39,6 +44,9 @@
     },
     "unsupported_version": {
       "message": "This SecuritySpy version is too old for this integration. Update SecuritySpy to version 6.0 or later."
+    },
+    "invalid_certificate": {
+      "message": "SecuritySpy's certificate could not be verified. It may have expired, or it was issued for a different address than the one saved here. If it has not simply expired, remove this SecuritySpy server and add it again using the address the certificate was issued for, or with certificate verification turned off."
     },
     "invalid_stored_data": {
       "message": "The saved connection details for this SecuritySpy server cannot be used. Remove the integration and add it again."

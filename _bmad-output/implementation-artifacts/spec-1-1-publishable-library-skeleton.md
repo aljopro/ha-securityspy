@@ -2,18 +2,29 @@
 title: 'Story 1.1: Publishable library skeleton'
 type: 'chore'
 created: '2026-08-10'
-status: 'awaiting-operator'
+status: 'done'
 baseline_revision: '107985aafc1fa47f1332530d910a2d95e3f1f258'
 final_revision: '4c3787c29357b86d7974be505dbeb366e65e1007'
 review_loop_iteration: 1
 followup_review_recommended: false
+operator_actions_completed: '2026-08-16'
 operator_actions:
-  - 'Create the public GitHub repository aljopro/aiosecurityspy (MIT, no starter template, default branch main).'
-  - 'Move the aiosecurityspy/ subtree of ha-securityspy into that new repository as its root, push it to main, and confirm GitHub Actions runs the CI workflow green.'
-  - 'Register a PyPI trusted publisher for the project name aiosecurityspy at https://pypi.org/manage/account/publishing/ with owner aljopro, repository aiosecurityspy, workflow publish.yml, and environment pypi.'
-  - 'Create the GitHub Actions environment named pypi in the aiosecurityspy repository so the publish job can attach to it.'
-  - 'Tag v0.1.0 and publish a GitHub Release from it, then confirm the publish workflow uploaded aiosecurityspy 0.1.0 to PyPI via OIDC with no stored token.'
-  - 'Confirm the GitHub owner is aljopro; if not, correct the project URLs in aiosecurityspy/pyproject.toml and the links in aiosecurityspy/CHANGELOG.md before tagging.'
+  - status: done
+    action: 'Create the public GitHub repository aljopro/aiosecurityspy (MIT, no starter template, default branch main).'
+  - status: done
+    action: 'Move the aiosecurityspy/ subtree of ha-securityspy into that new repository as its root, push it to main, and confirm GitHub Actions runs the CI workflow green.'
+    note: 'Ported with `git subtree split -P aiosecurityspy`, preserving all seven story commits, and merged onto the repo Initial commit with --allow-unrelated-histories. Pushed as 4bc8b55. CI run 31993075011 green: ruff, ruff format, mypy --strict, pytest, build, py.typed-in-wheel assertion, and the bare-env import with no Home Assistant.'
+  - status: done
+    action: 'Register a PyPI trusted publisher for the project name aiosecurityspy at https://pypi.org/manage/account/publishing/ with owner aljopro, repository aiosecurityspy, workflow publish.yml, and environment pypi.'
+    note: 'Registered as a pending publisher; the project is created on first upload.'
+  - status: done
+    action: 'Create the GitHub Actions environment named pypi in the aiosecurityspy repository so the publish job can attach to it.'
+  - status: superseded
+    action: 'Tag v0.1.0 and publish a GitHub Release from it, then confirm the publish workflow uploaded aiosecurityspy 0.1.0 to PyPI via OIDC with no stored token.'
+    note: 'The library advanced through stories 1.2-2.1 before the repository split, so pyproject.toml declares 0.2.0 and v0.1.0 is no longer a version that exists. The release itself is still outstanding and is tracked in deferred-work.md (the spec-2-1 entry covering the 0.2.0 publish, which DW-2 depends on); publish.yml fails the job unless the tag equals the metadata version.'
+  - status: done
+    action: 'Confirm the GitHub owner is aljopro; if not, correct the project URLs in aiosecurityspy/pyproject.toml and the links in aiosecurityspy/CHANGELOG.md before tagging.'
+    note: 'Owner confirmed aljopro; URLs in pyproject.toml already correct, no change needed.'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
   - '{project-root}/docs/hacs-packaging-and-blueprints.md'
@@ -91,6 +102,12 @@ No code exists yet. This story creates the tree; the paths below are the deliver
 ## Spec Change Log
 
 None. No bad_spec loopback occurred.
+
+### 2026-08-16 — Operator actions discharged
+
+The operator performed the external actions this story was blocked on, and `status` moved from `awaiting-operator` to `done`. Five of the six are complete; the sixth (tag and publish) is recorded as `superseded` because the version to release is now 0.2.0, not the 0.1.0 the spec anticipated. The library is a real repository at `aljopro/aiosecurityspy` with green CI and working release plumbing, so no code in this story's deliverable changed — only its frontmatter.
+
+Consequence for downstream work: `aiosecurityspy/` still exists as a subtree here as well, which is the duplication AD-14 exists to prevent. That cleanup is DW-2 in `deferred-work.md`, and it is unblocked only once 0.2.0 is actually on PyPI, because `manifest.json` pins that exact version and `[tool.uv.sources]` currently redirects it to the local path.
 
 ## Review Triage Log
 

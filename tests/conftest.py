@@ -7,7 +7,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from aiosecurityspy import ServerInfo
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_PORT,
+    CONF_SSL,
+    CONF_USERNAME,
+    CONF_VERIFY_SSL,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -15,13 +22,39 @@ if TYPE_CHECKING:
 SERVER_UUID: Final = "1D3A5C7E-9B21-4F60-8A44-0C2E6F1B7D93"
 SERVER_NAME: Final = "nvr"
 
-#: The four fields the user step collects, and the only four an entry stores.
+#: The six fields the user step collects, and the only six an entry stores.
+#: Defaults: plain HTTP, verification on -- the shape the form offers unchanged.
 MOCK_USER_INPUT: Final[dict[str, Any]] = {
     CONF_HOST: "192.168.1.20",
     CONF_PORT: 8000,
     CONF_USERNAME: "homeassistant",
     CONF_PASSWORD: "hunter2",
+    CONF_SSL: False,
+    CONF_VERIFY_SSL: True,
 }
+
+#: The same server reached over TLS on SecuritySpy's HTTPS port. Derived from
+#: `MOCK_USER_INPUT` so a new field cannot be added to one payload only.
+MOCK_HTTPS_USER_INPUT: Final[dict[str, Any]] = {
+    **MOCK_USER_INPUT,
+    CONF_PORT: 8001,
+    CONF_SSL: True,
+}
+
+
+def https_input(*, verify_ssl: bool = True) -> dict[str, Any]:
+    """Return the HTTPS payload, optionally with verification turned off.
+
+    Args:
+        verify_ssl: Whether the submitted form asks for certificate
+            verification. The interesting case is ``False``: it is the retry a
+            user makes after a certificate mismatch.
+
+    Returns:
+        A submittable copy of the HTTPS payload.
+
+    """
+    return {**MOCK_HTTPS_USER_INPUT, CONF_VERIFY_SSL: verify_ssl}
 
 
 def make_server_info(uuid: str = SERVER_UUID, name: str = SERVER_NAME) -> ServerInfo:

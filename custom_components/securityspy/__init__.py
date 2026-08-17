@@ -10,11 +10,13 @@ deliberately empty until story 2.3 introduces them.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from aiosecurityspy import (
     SecuritySpyAuthError,
+    SecuritySpyCertificateError,
     SecuritySpyClient,
     SecuritySpyConnectError,
     SecuritySpyError,
@@ -25,7 +27,9 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
     CONF_PORT,
+    CONF_SSL,
     CONF_USERNAME,
+    CONF_VERIFY_SSL,
     Platform,
 )
 from homeassistant.exceptions import (
@@ -36,6 +40,8 @@ from homeassistant.exceptions import (
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN
+
+_LOGGER: Final = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from aiosecurityspy import ServerInfo
@@ -83,17 +89,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
 
     """
     try:
+        # Both TLS choices are read from the entry and applied here, to the
+        # session and to the client alike. Every later connection -- including
+        # the event stream Epic 3 spawns from this client -- inherits them from
+        # the client rather than re-reading the entry, so there is one place
+        # they are decided. Read inside the guard: a key missing from stored
+        # data is the same class of problem as a value the client rejects, and
+        # a bare `KeyError` traceback would be a worse report of it.
+        verify_ssl: bool = entry.data[CONF_VERIFY_SSL]
+        use_https: bool = entry.data[CONF_SSL]
+        if use_https and not verify_ssl:
+            # The only ongoing record of the choice. Every request -- and the
+            # Epic 3 event stream -- carries the HTTP Basic credential to
+            # whatever answers this address, so a setting flipped once during
+            # troubleshooting should not stay silent. No credential is logged.
+            #
+            # Gated on HTTPS as well: nothing in the form couples the two
+            # toggles, so a plain-HTTP entry can carry verification off. There
+            # is no certificate to check on such a connection, and the form
+            # already says the flag is "only used when Connect over HTTPS is
+            # on" -- warning about it anyway would describe a risk the entry
+            # does not run, and teach the reader to ignore the line that
+            # matters when it does.
+            _LOGGER.warning(
+                "Certificate verification is disabled for the SecuritySpy server at %s:%s; "
+                "its identity is not being checked on any connection",
+                entry.data[CONF_HOST],
+                entry.data[CONF_PORT],
+            )
         client = SecuritySpyClient(
-            # inject-websession (Platinum): the integration never builds a session.
-            async_get_clientsession(hass),
+            # inject-websession (Platinum): the integration never builds a
+            # session. Home Assistant keeps one per verification setting, each
+            # with an SSL context built off the event loop.
+            async_get_clientsession(hass, verify_ssl=verify_ssl),
             entry.data[CONF_HOST],
             entry.data[CONF_PORT],
             username=entry.data[CONF_USERNAME],
             password=entry.data[CONF_PASSWORD],
+            use_https=use_https,
+            # The per-request `ssl=` flag must agree with the session's
+            # connector: `ssl=True` resolves by deferring to it.
+            verify_ssl=verify_ssl,
         )
-    except (TypeError, ValueError) as err:
-        # Stored data the client cannot use -- a hand-edited entry, or a restore
-        # from a future schema. Retrying cannot help, so it is permanent.
+    except (KeyError, TypeError, ValueError) as err:
+        # Stored data the client cannot use -- a hand-edited entry, a restore
+        # from a future schema, or an entry written before a field existed.
+        # Retrying cannot help, so it is permanent. `KeyError` is included
+        # because a missing key is exactly that condition, and it is not a
+        # `ValueError`: without this it would escape as a raw traceback.
         raise ConfigEntryError(
             translation_domain=DOMAIN, translation_key="invalid_stored_data"
         ) from err
@@ -109,6 +152,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
     except SecuritySpyUnsupportedVersionError as err:
         raise ConfigEntryError(
             translation_domain=DOMAIN, translation_key="unsupported_version"
+        ) from err
+    except SecuritySpyCertificateError as err:
+        # Must precede the `SecuritySpyConnectError` clause it subclasses, or the
+        # certificate-specific message is unreachable. `NotReady` rather than
+        # `ConfigEntryError` because one of the two causes self-heals: an expired
+        # certificate is fixed by renewal without anyone touching Home Assistant,
+        # and `NotReady` picks that up on its own. The other cause -- a name the
+        # certificate was not issued for, which the user-facing string names as
+        # the likelier one -- is permanent, but its repair is story 2.9's
+        # reconfigure flow; a permanent error here would strand the entry until a
+        # manual reload without bringing that repair any closer.
+        raise ConfigEntryNotReady(
+            translation_domain=DOMAIN, translation_key="invalid_certificate"
         ) from err
     except SecuritySpyConnectError as err:
         raise ConfigEntryNotReady(

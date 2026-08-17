@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Final
 import voluptuous as vol
 from aiosecurityspy import (
     SecuritySpyAuthError,
+    SecuritySpyCertificateError,
     SecuritySpyClient,
     SecuritySpyConnectError,
     SecuritySpyError,
@@ -25,10 +26,18 @@ from aiosecurityspy import (
     ServerInfo,
 )
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_PORT,
+    CONF_SSL,
+    CONF_USERNAME,
+    CONF_VERIFY_SSL,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -46,8 +55,14 @@ _LOGGER: Final = logging.getLogger(__name__)
 #: Library error type -> `config.error` translation key. A tuple rather than a
 #: `dict` keyed by type, because matching is by `isinstance`: a future library
 #: subclass inherits its parent's message instead of falling through to
-#: `unknown`. The three are siblings, so the order carries no meaning.
+#: `unknown`.
+#:
+#: The order is load-bearing at the top: `SecuritySpyCertificateError` is a
+#: *subclass* of `SecuritySpyConnectError`, so listing it second would make the
+#: certificate message unreachable and send a user with a hostname mismatch
+#: hunting for a network problem they do not have.
 _ERROR_KEYS: Final[tuple[tuple[type[SecuritySpyError], str], ...]] = (
+    (SecuritySpyCertificateError, "invalid_certificate"),
     (SecuritySpyAuthError, "invalid_auth"),
     (SecuritySpyUnsupportedVersionError, "unsupported_version"),
     (SecuritySpyConnectError, "cannot_connect"),
@@ -86,6 +101,12 @@ STEP_USER_DATA_SCHEMA: Final = vol.Schema(
         vol.Required(CONF_PASSWORD): TextSelector(
             TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
         ),
+        # Off by default: SecuritySpy's web server listens on plain HTTP out of
+        # the box, and the port field defaults to that listener's port.
+        vol.Required(CONF_SSL, default=False): BooleanSelector(),
+        # On by default. Turning verification off is a deliberate, described
+        # choice, never something a user arrives at by accepting a default.
+        vol.Required(CONF_VERIFY_SSL, default=True): BooleanSelector(),
     }
 )
 
@@ -110,13 +131,23 @@ def _build_client(hass: HomeAssistant, user_input: Mapping[str, Any]) -> Securit
         A client bound to the described server.
 
     """
+    verify_ssl: bool = user_input[CONF_VERIFY_SSL]
     return SecuritySpyClient(
         # inject-websession (Platinum): the config flow never builds a session.
-        async_get_clientsession(hass),
+        # Home Assistant keeps one session per verification setting, each with a
+        # connector whose SSL context was built off the event loop; asking for
+        # the matching one is what keeps this flow from building its own.
+        async_get_clientsession(hass, verify_ssl=verify_ssl),
         user_input[CONF_HOST],
         user_input[CONF_PORT],
         username=user_input[CONF_USERNAME],
         password=user_input[CONF_PASSWORD],
+        use_https=user_input[CONF_SSL],
+        # Passed as well as selected: the library sends the flag as aiohttp's
+        # per-request `ssl=`, and `ssl=True` resolves by deferring to the
+        # connector above, so the two must agree or a request would carry a
+        # verification setting the session was not built for.
+        verify_ssl=verify_ssl,
     )
 
 
