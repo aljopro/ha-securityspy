@@ -87,3 +87,21 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-2-connect-over-https-with-a-verification-toggle.md`
   summary: Surface TLS and certificate failures raised by the long-lived event stream, which today inherits story 2.2's TLS flags but none of its new diagnosis.
   evidence: `async_setup_entry` now maps `SecuritySpyCertificateError` to a certificate-specific, user-visible failure, but that mapping only covers the one-shot setup call. `_run()` in `aiosecurityspy/src/aiosecurityspy/stream.py` catches every exception into `_LOGGER.debug("... %s", type(err).__name__)` and backs off, so a certificate that expires while Home Assistant is already running produces an indefinite silent reconnect loop with no warning and no user-visible signal — the case the new exception type exists to name. Story 2.2's intent contract forbids changing `stream.py`'s reconnect policy, and there is no consumer of the stream's failures until Epic 3, so this belongs to whichever Epic 3 story owns stream health reporting.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-7-credential-safe-diagnostics.md`
+  summary: `test_settings_payload_is_never_logged_at_any_level` in `aiosecurityspy/tests/test_settings.py` can pass vacuously — its `caplog.at_level(0, logger="aiosecurityspy")` captures nothing, so the "no credential in the log" search runs over an empty string.
+  evidence: level `0` is `logging.NOTSET`, i.e. "inherit", and the root logger that caplog attaches its handler to sits at `WARNING`, so every library `DEBUG` line is dropped before the handler sees it. The test would stay green if the library started logging the settings payload in full. Story 1.7's new `test_credential_containment.py` works around this for its own sweep by nesting the call inside `caplog.at_level(logging.DEBUG)` and asserting a minimum `DEBUG` record count, but the pre-existing story-1.6 test was outside this story's scope to modify and still has the hole.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-7-credential-safe-diagnostics.md`
+  summary: `aiohttp.BasicAuth` and the `auth=` request kwarg are both deprecated and slated for removal in aiohttp 4.0, and they are the library's sole credential transport.
+  evidence: The suite emits 268 DeprecationWarnings, e.g. `stream.py:377` — "The 'auth' parameter is deprecated and will be removed in v4; pass headers={'Authorization': aiohttp.encode_basic_auth(login, password)} instead". Pre-existing, not caused by story 1.7, but it invalidates the "credentials travel as `auth=`, never in a URL" design once aiohttp 4 lands; migrating to an `Authorization` header preserves that property and needs its own story.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-7-credential-safe-diagnostics.md`
+  summary: A redirect followed by aiohttp carries the `auth=` credential to whatever host the redirect names, and nothing asserts that it does not reach a third-party one.
+  evidence: `test_credential_containment.py`'s URL sweep inspects the URLs the library itself hands to the session, which is all it can inspect through a stub. aiohttp's own redirect handling re-sends `auth=` on a cross-host redirect, and a SecuritySpy instance behind a misconfigured reverse proxy is the shape that produces one — precisely the research §7 leak, arriving by a path this story's assertions do not cover. Pre-existing: the `auth=` transport predates story 1.7. Fixing it means either disabling redirects on the library's requests or dropping auth across an origin change, both of which change request behaviour and belong in their own story.
+
+### DW-3: Follow-up review still recommended for 1-7-credential-safe-diagnostics after the damping cap was spent
+origin: review-budget-followup
+location: n/a
+source_spec: `spec-1-7-credential-safe-diagnostics.md`
+severity: low
+reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260817-080028-f442; this entry preserves the lingering recommendation for a deliberate later review.
+status: open

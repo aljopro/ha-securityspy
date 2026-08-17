@@ -55,7 +55,7 @@ development_status:
   1-4-capture-history-decoding: done
   1-5-detection-episode-reducer: done
   1-6-settings-arming-and-permission-decoding: done
-  1-7-credential-safe-diagnostics: backlog
+  1-7-credential-safe-diagnostics: done
   1-8-server-and-camera-health-decoding: backlog
   1-9-capture-media-fetch: backlog
   1-10-schedule-names-and-camera-enable-write: backlog
