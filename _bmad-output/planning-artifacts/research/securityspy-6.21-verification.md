@@ -1016,10 +1016,23 @@ consumer puts a `settings-general` payload into a dump.
 `POST /settings-web` carries `account={…"username":"…","password":"…"…}` in cleartext — the
 account editor submitting a password, which is unavoidable when setting one.
 
-**The read side is clean.** `GET ++settings-web?format=json` returns 30 keys including an
-`accounts` array of 3 accounts with **no `password` field at all** (verified by structure;
-values were never displayed). So enumerating accounts does not expose their passwords, and an
-earlier worry on my part was unfounded.
+**The read side is clean *on the JSON surface only*.** `GET ++settings-web?format=json`
+returns 30 keys including an `accounts` array of 3 accounts with **no `password` field at all**
+(verified by structure; values were never displayed).
+
+**⚠ Corrected 2026-08-29 — the browser surface is not clean.** The account editor's `POST` body,
+captured from a real session, carries `account={…"username":"…","password":"…"…}` **for every
+account on the server**, in cleartext, including accounts the operator was not editing. The
+dialog's *Reveal* button is the visible proof: the client holds each password in cleartext, so
+the page it loaded must have supplied them. Enumerating accounts through the browser surface
+therefore **does** expose every password, and the earlier "worry was unfounded" applies only to
+the JSON endpoint the library actually reads.
+
+Consequences: this is a property of SecuritySpy, not of this integration, and the library reads
+none of it. But **never paste a settings payload into an issue, a chat, or a diagnostics dump**,
+and treat any capture of the settings page as a credential-bearing artifact — the same handling
+as §8.3's camera device credentials, escalated, because these are the accounts that log in to
+SecuritySpy itself.
 
 Also confirms §5.11: `wanAddress` and `ddnsName` are configured values, which is why a
 privileged account sees the real `*.viewcam.me` name and an ordinary one sees the connected host.

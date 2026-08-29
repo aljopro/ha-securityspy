@@ -123,43 +123,40 @@ Settled facts:
 - Error code **64 = "Host is down"** is the first real code observed. The library does not
   enumerate codes and should not start: 64 is one value from an unknown space.
 
-### G7 — Permission bit 1 (value 2) 🟡 REOPENED — bit 1 has no checkbox
-Superseded by direct evidence from the account editor. The **Per-camera custom permissions**
-panel offers exactly **ten** checkboxes, and a camera with all ten ticked (Peyton's Room) reads
-mask **`4063` = eleven bits** (0,1,2,3,4,6,7,8,9,10,11). Ten boxes, eleven bits.
+### G7 — Permission bit 1 (value 2) ✅ CLOSED 2026-08-29 — **it is server-derived, not grantable**
+Closed by the account editor's own `POST` body, which Jensen captured from the browser. The
+body carries `permissions` as an array of per-camera bitmasks, one value per checkbox state.
 
-| checkbox | bit | constant |
-|---|---|---|
-| Get live video and images | 0 | `PERM_LIVEVIDEO` |
-| Get live audio | 9 | `PERM_AUDIORCV` |
-| Send live audio (two-way audio) | 11 | `PERM_AUDIOSND` |
-| Change schedules | 7 | `PERM_SCHED` |
-| Get captured footage | 2 | `PERM_FILES` |
-| Delete captured footage | 3 | `PERM_FILEDEL` |
-| Camera Control (PTZ) | 6 | `PERM_CAMCONTROL` |
-| Set PTZ preset positions | 8 | `PERM_PTZSET` |
-| Trigger motion detection | 10 | `PERM_TRIGGER` |
-| Set camera settings | 4 | `PERM_SETTINGS` |
+**Every checkbox maps to exactly one bit, and value `2` is never transmitted:**
 
-The mapping is confirmed independently by the same reading: nine cameras at `1999` lack exactly
-bits 4 and 11, Ada's Room at `2015` adds bit 4, Peyton's Room at `4063` adds bit 11 — matching
-the two boxes those cameras differ by. Every named constant in `const.py` is now tied to a
-label the product itself uses.
+| checkbox | value | bit | constant |
+|---|---|---|---|
+| Get live video and images | 1 | 0 | `PERM_LIVEVIDEO` |
+| Get captured footage | 4 | 2 | `PERM_FILES` |
+| Delete captured footage | 8 | 3 | `PERM_FILEDEL` |
+| Set camera settings | 16 | 4 | `PERM_SETTINGS` |
+| Camera Control (PTZ) | 64 | 6 | `PERM_CAMCONTROL` |
+| Change schedules | 128 | 7 | `PERM_SCHED` |
+| Set PTZ preset positions | 256 | 8 | `PERM_PTZSET` |
+| Get live audio | 512 | 9 | `PERM_AUDIORCV` |
+| Trigger motion detection | 1024 | 10 | `PERM_TRIGGER` |
+| Send live audio (two-way audio) | 2048 | 11 | `PERM_AUDIOSND` |
 
-**Bit 1 is the leftover: it is set, and no checkbox controls it.** It is therefore *derived*,
-not granted. The correlation on record is with `PERM_FILES` — Live-only produced bits 0,9 with
-no bit 1, and adding Captures produced bits 0,**1**,2,9 — so the leading hypothesis is that the
-server sets bit 1 whenever captured-footage access is granted. Plausibly a companion right such
-as download-permitted, the grant-shaped counterpart to the deny-shaped `PERM_NODOWNLOAD`
-(bit 12). **Hypothesis only — do not name the bit on this.**
+Ten checkboxes, ten bits, **none of them bit 1**. The UI cannot set it and the client never
+sends it, yet `++systemInfo` reports it — so **bit 1 is computed by the server**. Combined with
+the earlier readings (absent under Live-only and on a live-video-only camera; present wherever
+`PERM_FILES` is granted), it behaves as a derived companion to captured-file access.
 
-**The test that would settle it** (one camera, two readings):
-1. Tick **only** "Get captured footage" on one camera → if the mask is `6` (bits 1+2), bit 1 is
-   bound to `PERM_FILES`. If it is `4`, bit 1 comes from somewhere else entirely.
-2. Untick "Get captured footage" while leaving others ticked → bit 1 should vanish.
+**Action: leave bit 1 out of `PERMISSION_NAMES` permanently, and never treat it as a grant.**
+This is now a stronger conclusion than "unnamed": a bit no administrator can set is not a
+permission a consumer may reason about. `decode_permissions` ignoring unknown bits is exactly
+right. The remaining unknown — *what* the server derives it from — no longer blocks anything.
 
-**Action until then:** leave bit 1 unnamed and out of `PERMISSION_NAMES`. `decode_permissions`
-ignores unknown bits, so nothing misbehaves. Do not let a consumer infer a right from it.
+**Wire-format finding: the `permissions` array is 1-indexed.** Camera *n* is at index *n+1*;
+index 0 is unused, and the array is zero-padded well past the camera count. Verified against a
+known per-camera configuration: offset-by-one matched **11 of 11** cameras, direct indexing
+matched **0 of 11**. Anyone implementing an account write must not index it by camera number.
+The library performs no account writes and should not start (AD-13).
 
 ### G8 — Do per-camera permissions hide a camera from one endpoint? ✅ CLOSED 2026-08-29 — **yes, and it inverts the earlier conclusion**
 With the account granted **only Driveway** (camera 3, mask `1` — live video alone) and every
