@@ -510,6 +510,14 @@ audio; the five without it report `u-Law`. So `has_permission()` reading as "*th
 grants X" is the correct framing, and `const.py` naming it a "per-camera permission bitmask"
 is right — a consumer must never collapse the eleven masks into one account-level set.
 
+**The masking is observed on the audio bits only.** `CAMCONTROL` (6) and `PTZSET` (8) are set
+on all eleven cameras, the unplugged one included, and every camera is ONVIF — so control
+rights do not vary here and this evidence does not show them being masked by capability. Only
+bits 11 and 9 vary, and bit 11 tracks the audio codec exactly: the five `A-Law` cameras carry
+it, the five `u-Law` cameras do not. Read the rule as "a capability the camera lacks does not
+appear as a granted right", demonstrated for audio; do not assume the same masking for a bit
+no camera in this inventory lacks.
+
 This live-verifies nine of the eleven named bits at once (0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 13).
 Two remain unobserved and both are explainable:
 
