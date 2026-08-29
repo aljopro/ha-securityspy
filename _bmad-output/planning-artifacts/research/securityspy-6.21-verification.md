@@ -598,6 +598,35 @@ read **`12255`** under the Administrator account — exactly as predicted, both 
 restored. `camera-list[].permissions` varying with camera connection state is now established
 by prediction and confirmation, not by inference from a single reading.
 
+## 5.13 `++ssSetSchedule` also denies with `401` — the `403` case is the exception ⭐⭐
+
+An attempt to exercise the last unverified operation was **blocked**, and the block is the
+finding. Using the ordinary probe account (mask `839`), in the same second:
+
+| request | status |
+|---|---|
+| `++systemInfo?format=json` | `200` — the credentials are valid |
+| `++settings-cameras?cameraNum=10` | `403` |
+| `++ssSetSchedule?cameraNum=10&mode=CMA&override=0` | **`401`** |
+
+Mask `839` grants `live_video, files, camera_control, ptz_preset_set, audio_receive` and
+**not** `PERM_SCHED` (128), which `async_set_camera_arming` names as this endpoint's
+requirement. So the `401` is a permission denial, on an endpoint that is not media.
+
+**This overturns the scoping in §5.9.** The `401`-for-permission behaviour is not a property of
+media endpoints; it is the *general* case, and `++settings-cameras` returning `403` is the
+exception. Which code a denial carries cannot be predicted from an endpoint's kind — only from
+having tested that endpoint. Story 1.14 was rewritten accordingly: the disambiguation is keyed
+on the `401` status rather than on a list of endpoints, because the list was wrong within a day
+of being written.
+
+**The write itself remains unperformed.** `++ssSetSchedule` stays the sole `client-source`
+operation in the OpenAPI description, and AD-7's rule that `schedule=` is never sent still
+rests on a read of `script.js`. Closing it needs an account holding `PERM_SCHED` — either
+granting it to the probe account or another temporary account. The restore point for the
+intended test is recorded: **Kitchen (camera 10), all three modes `armed`, all three schedule
+ids `1`, all three overrides `0`.**
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,

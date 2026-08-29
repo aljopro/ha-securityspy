@@ -206,3 +206,8 @@ marker. Two rules keep it worth trusting:
   means a camera disabled in SecuritySpy loses its Home Assistant entities instead of going
   unavailable — the exact failure story 3.1 targets. Stories 2.3, 2.7 and 3.1 all depend on
   this choice; it should be made once, in the architecture, not three times.
+- **`++ssSetSchedule` is still untested, and needs `PERM_SCHED`.** The probe account's mask
+  (`839`) does not include it, which is why this operation was never exercised. It is the only
+  `client-source` entry left in the OpenAPI description and the only wire evidence behind
+  AD-7, so epic 6's arming stories rest on it. Restore point for the intended test: Kitchen
+  (camera 10), three modes `armed`, three schedule ids `1`, three overrides `0` (§5.13).
