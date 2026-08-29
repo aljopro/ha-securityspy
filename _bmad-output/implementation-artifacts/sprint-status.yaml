@@ -65,6 +65,7 @@ development_status:
   1-14-a-media-401-can-mean-permission-not-bad-credentials: ready-for-dev
   1-15-capture-size-is-megabytes-and-fractional: ready-for-dev
   1-16-mode-selects-which-capture-modes-a-write-targets: ready-for-dev
+  1-17-redact-secrets-and-identifying-detail: ready-for-dev
   epic-1-retrospective: optional
   epic-2: backlog
   2-1-add-a-securityspy-server-through-the-ui: done

@@ -228,4 +228,5 @@ marker. Two rules keep it worth trusting:
   `videoPassthrough` is correctly *not* matched (§5.18.3). Latent today because the library
   reads none of those pages. These are SecuritySpy's *application* passwords, and the risk is a
   diagnostics dump attached to a public issue — not LAN traffic, which is plain HTTP to the
-  cameras regardless. Cheap to fix and squarely within that function's purpose.
+  cameras regardless. Cheap to fix and squarely within that function's purpose. **Specced as story 1.17**, which
+  also covers `wan-address`, `deviceList` and both `auth=` forms under the widened AD-13.
