@@ -105,3 +105,11 @@ source_spec: `spec-1-7-credential-safe-diagnostics.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260817-080028-f442; this entry preserves the lingering recommendation for a deliberate later review.
 status: open
+
+### DW-4: Follow-up review still recommended for 1-8-server-and-camera-health-decoding after the damping cap was spent
+origin: review-budget-followup
+location: n/a
+source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+severity: low
+reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260828-195436-607b; this entry preserves the lingering recommendation for a deliberate later review.
+status: open
