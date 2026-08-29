@@ -212,6 +212,11 @@ Note the **trailing comma** in `cams`. Returns a JSON array.
 
 ### 4.1 Fields (decoded from `js/captures.js`)
 
+> ⚠️ **See `securityspy-6.21-verification.md` §5.6.** `m` is a **float in megabytes**, not
+> an integer; `z` does not track `m` (equal on 10% of live entries); and the filename
+> example below does not match a live server — real filenames contain **spaces**, not `+`.
+
+
 | Field | Meaning |
 |---|---|
 | `c` | camera number |

@@ -225,6 +225,35 @@ The full set of id-only boolean keys on that page (82 of them) includes `enabled
 **Not verified by write.** The field name and mechanism are read from the shipped client;
 no POST was issued against the live server.
 
+## 5.6 `caplist` verified against 10,476 live captures
+
+Fetched with `cams=…&startDate=…&endDate=…&filter=0` over a month. The envelope is a
+**bare top-level array** and the library decodes it correctly — 10,476 of 10,476 entries,
+none rejected. All thirteen documented keys (`c t s d i g m f n a u z o`) are present on
+every entry. Three corrections:
+
+- **`m` is a float, in megabytes.** `script.js:405` names the parameter `mb` and converts
+  upward to GB/TB, downward via `parseInt(mb*1000)+' KB'`. Observed range `0.04` to
+  `9129.763`, and **float on every one of 10,476 entries** (only 8 happen to be
+  integral-valued). §4.1 calls it "file size" without a unit or type.
+- **`z` does not simply "track `m`"** as §4.1 suggests — the two are equal on only 1,046
+  of 10,476 entries. Meaning still unconfirmed. `i` is an int of unknown meaning
+  (not `m` in KB: entry 0 has `m=0.713` → 713 KB but `i=1349`).
+- **The filename format in §4.1's example does not match this server.** The real form is
+  `08-29-2026 5-52-31 AM M Living Room.mov` — **every one of the 10,476 filenames contains
+  spaces, and none contains `+`**, where the doc's example (`M+2026-08-09_17-35-19_C.jpg`)
+  is the reverse. This is why the story 1.9 review's percent-encoding finding was
+  load-bearing rather than theoretical: unencoded, every capture on this server would have
+  produced a broken `getfile` URL.
+
+### Library consequence: `Capture.file_size` is lost for 99.92% of captures
+
+`models.py:1013` reads `file_size = _as_int(payload.get("m"))` into a field typed
+`int | None`. `_as_int` yields `None` for a non-integral float, so file size decodes for
+**8 of 10,476** captures. Where it does decode, an `int` in a field named `file_size`
+invites a consumer to read megabytes as bytes. Same failure class as §7.2: a wire type
+guessed, then pinned by fixtures written to match the guess.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
@@ -262,6 +291,7 @@ Both unknowns that would have become Block If entries are resolved:
 - `CameraStatus.error` is typed `str | None`; the live wire sends `err: 0` as an **int**.
   Worth confirming the decode path does the right thing with a non-string.
 - The reference doc should be updated with §4's corrections, or annotated as 6.20-era.
+- `Capture.file_size` needs a float type and a documented unit (§5.6).
 
 ## 8. Open questions
 
