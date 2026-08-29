@@ -189,3 +189,8 @@ marker. Two rules keep it worth trusting:
   anonymizer should cover identifying hostnames as well as credentials (§5.11).
 - **Permission bit 5 (32) has never been observed set** under any of the four permission types
   tested, including Administrator. Unlike bit 1 it appears unused rather than merely unnamed.
+- **Decide the inventory of record before epic 2.** `++camStatus` reports 11 cameras and
+  `++systemInfo` reports 10 when one is disabled (§5.12). Building devices from `++systemInfo`
+  means a camera disabled in SecuritySpy loses its Home Assistant entities instead of going
+  unavailable — the exact failure story 3.1 targets. Stories 2.3, 2.7 and 3.1 all depend on
+  this choice; it should be made once, in the architecture, not three times.

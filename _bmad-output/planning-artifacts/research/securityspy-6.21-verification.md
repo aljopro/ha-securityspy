@@ -551,6 +551,44 @@ is not a credential, so story 1.7 is not violated as written — but it is perso
 identifying network information, and HA's own guidance treats that as redactable. See
 "Documentation follow-ups".
 
+## 5.12 A disabled camera vanishes from `++systemInfo` but not `++camStatus` ⭐⭐
+
+North Yard (camera 6) was disabled in the SecuritySpy UI. The two inventory endpoints then
+**disagree about which cameras exist**:
+
+| endpoint | cameras reported | camera 6 |
+|---|---|---|
+| `++camStatus` | 11 | present: `{"num":6,"enabled":false,"online":false,"open":false,"err":0,"errDesc":""}` |
+| `++systemInfo` | **10** | **absent from `camera-list` entirely** |
+
+`server.camera-count` also reads `10`, so `++systemInfo` is internally consistent — it does not
+report a count that disagrees with its own list, and `ServerInfo.from_api` decodes it without
+complaint. **There is no library defect here.** What there is, is a behavioural fact with
+direct consequences for the integration:
+
+- **A disabled camera is not an errored camera.** `err` is `0` and `errDesc` is empty; only
+  `enabled` is `false`. It is distinguishable from the unplugged case (§5.10), where `enabled`
+  stayed `true` and `err` was `64`. The three booleans earn their independence here.
+- **`++camStatus` is not simply a cheaper `++systemInfo`.** Its docstring calls it "the
+  low-cost alternative", and for *health* it is — but the two enumerate **different sets**. A
+  consumer that creates entities from `++systemInfo` and polls health from `++camStatus` will
+  receive status for a camera it has no entity for.
+- **Historical captures survive.** `++caplist` for camera 6 still returns its recordings, so
+  disabling stops the camera, not access to what it already recorded.
+
+**Consequence for epic 2 and epic 3, not for the library.** If devices are built from
+`++systemInfo`, disabling a camera in SecuritySpy makes its Home Assistant device and entities
+*disappear* rather than go unavailable — which is the failure story 3.1 ("report unavailable
+rather than stale") exists to prevent, and it would silently orphan history and break
+automations. Stories 2.3, 2.7 and 3.1 must decide deliberately whether the inventory of record
+is `++camStatus` (11, includes disabled) or `++systemInfo` (10, excludes them). The two are not
+interchangeable.
+
+**Also confirmed here:** §5.11's falsifiable prediction. With Living Room reconnected, its mask
+read **`12255`** under the Administrator account — exactly as predicted, both audio bits
+restored. `camera-list[].permissions` varying with camera connection state is now established
+by prediction and confirmation, not by inference from a single reading.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
