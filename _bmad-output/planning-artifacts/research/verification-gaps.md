@@ -170,16 +170,25 @@ level. On this evidence **no fallback is justified**: `++camStatus` is the inven
 cameras from both surfaces**, with `server.camera-count` agreeing. So a restricted account is
 not filtered on either endpoint, and the two do not disagree.
 
-**What is not tested.** The account editor offers two types that were never exercised:
-**"Per-camera custom permissions"** and **"Per-group custom permissions"**. Those are the only
-plausible way a camera could be hidden from one surface and not the other — an account granted
-three of eleven cameras might well see a shorter `camera-list`. Account-level *strength* is now
-ruled out as a cause; account-level *scoping* is what remains.
+**Per-camera custom permissions tested — still no divergence.** With the account set to
+**Per-camera custom permissions** and the boxes varied *between* cameras (nine cameras at mask
+`1999`, Ada's Room `2015` adding `SETTINGS`, Peyton's Room `4063` adding `SETTINGS` and
+`AUDIOSND`), **both endpoints still report all 11 cameras** and the sets are identical. Varying
+permissions per camera changes only the mask, never membership — the same rule that holds for
+account-level types.
 
-**Access needed:** one account set to **per-camera** permissions covering a subset of cameras.
-Read both endpoints as that account and compare the camera sets. Note this needs a permission
-*shape* no existing account has — `aitest` cannot answer it however restricted it is, because
-its restriction is in strength, not scope.
+Two incidental confirmations from that reading: `PERM_AUDIOSND` was granted to Peyton's Room
+alone and appears on that camera alone, so the permission ∩ capability rule (§5.11) holds under
+per-camera scoping too; and `PERM_PUSH_STREAMS` (bit 13) is absent everywhere under this
+permission type though it was set under Administrator, so it is not a per-camera checkbox.
+
+**What is still not tested.** No camera was left with **zero** permissions. That is the one
+configuration that could plausibly drop a camera from `camera-list` — a camera the account may
+not see *at all*, rather than one it sees with few rights. "Per-group custom permissions" is
+also unexercised, but it is the same mechanism applied to a group and unlikely to differ.
+
+**Access needed:** one camera with **every box unchecked**, then read both endpoints and
+compare the camera sets. Everything short of that is now ruled out.
 **Risk:** very low, fully reversible.
 **Why it matters:** if the two disagree under per-camera permissions, a single-source inventory
 either over-reports cameras the user may not see or under-reports ones they may. Decide before
