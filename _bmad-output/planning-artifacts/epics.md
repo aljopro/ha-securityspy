@@ -585,6 +585,28 @@ So that I am not told to re-enter a password that is already correct. *(NFR-15; 
 
 ---
 
+### Story 1.12: Decode the camera inventory a real server actually sends
+
+As a Home Assistant user,
+I want my cameras to appear at all,
+So that the integration is not silently empty against a server that is working perfectly. *(FR-41; hard-blocks FR-1 and every camera-scoped requirement)*
+
+**Acceptance Criteria:**
+
+**Given** a `++systemInfo` body from a live 6.x server
+**When** the camera inventory is decoded
+**Then** every camera the server reports is decoded, and the decoded count matches the server's own camera count
+
+**Given** an envelope shape the library has not seen before
+**When** the camera list cannot be located
+**Then** the mismatch is surfaced as a decode failure rather than returning an empty inventory that looks like a server with no cameras
+
+**Given** the decoder's test suite
+**When** it is run
+**Then** at least one case is built from a captured real-server payload rather than a fixture the library authored, so an envelope the server does not send cannot pass
+
+---
+
 ## Epic 2: Connect and Model
 
 A user adds their SecuritySpy server through the Home Assistant UI and their cameras appear as correctly-named devices beneath one server hub, with no manual renaming and no entity named after an IP address.

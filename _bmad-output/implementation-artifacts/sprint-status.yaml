@@ -1,5 +1,5 @@
 # generated: 2026-08-09T22:17:18-05:00
-# last_updated: 2026-08-29T05:38:17-05:00
+# last_updated: 2026-08-29T05:46:08-05:00
 # project: ha-securityspy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -58,8 +58,9 @@ development_status:
   1-7-credential-safe-diagnostics: done
   1-8-server-and-camera-health-decoding: done
   1-9-capture-media-fetch: done
-  1-10-schedule-names-and-camera-enable-write: backlog
-  1-11-permission-denied-is-not-an-authentication-failure: backlog
+  1-10-schedule-names-and-camera-enable-write: ready-for-dev
+  1-11-permission-denied-is-not-an-authentication-failure: ready-for-dev
+  1-12-decode-the-camera-inventory-a-real-server-sends: backlog
   epic-1-retrospective: optional
   epic-2: backlog
   2-1-add-a-securityspy-server-through-the-ui: done
