@@ -2,11 +2,13 @@
 title: "Story 1.13: Timestamps use the server's own timezone"
 type: 'bugfix'
 created: '2026-08-29'
-status: 'ready-for-dev'
+status: 'in-review'
 review_loop_iteration: 0
 followup_review_recommended: false
+final_revision: 'PENDING'
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
+baseline_revision: '5eb5ef649082c74d9d02ac4d7aecdb0e6027a973'
 ---
 
 <intent-contract>
@@ -57,11 +59,11 @@ warnings: [oversized]
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `aiosecurityspy/src/aiosecurityspy/models.py` -- decode and expose the server's UTC offset on `ServerInfo` -- the library cannot offer a correct default for a value it never reads.
-- [ ] `aiosecurityspy/src/aiosecurityspy/events.py` -- require `server_timezone` on `parse_event_line` and correct the false assumption in its docstring -- the docstring is why the defect went unquestioned.
-- [ ] `aiosecurityspy/src/aiosecurityspy/stream.py`, `client.py` -- require `server_timezone` on the stream constructor, `create_event_stream` and `async_get_captures` -- these three defaults are the actual bug surface.
-- [ ] `aiosecurityspy/tests/` -- cover every I/O-matrix row, including a positive and a non-hour offset, the absent and unusable forms, zero-as-a-real-offset, and the DST-boundary comparison showing a fixed offset differing from a real zone.
-- [ ] `aiosecurityspy/README.md`, `aiosecurityspy/CHANGELOG.md` -- document the breaking signature change, how to obtain the offset, and that a caller who knows the server's IANA zone should pass it instead.
+- [x] `aiosecurityspy/src/aiosecurityspy/models.py` -- decode and expose the server's UTC offset on `ServerInfo` -- the library cannot offer a correct default for a value it never reads.
+- [x] `aiosecurityspy/src/aiosecurityspy/events.py` -- require `server_timezone` on `parse_event_line` and correct the false assumption in its docstring -- the docstring is why the defect went unquestioned.
+- [x] `aiosecurityspy/src/aiosecurityspy/stream.py`, `client.py` -- require `server_timezone` on the stream constructor, `create_event_stream` and `async_get_captures` -- these three defaults are the actual bug surface.
+- [x] `aiosecurityspy/tests/` -- cover every I/O-matrix row, including a positive and a non-hour offset, the absent and unusable forms, zero-as-a-real-offset, and the DST-boundary comparison showing a fixed offset differing from a real zone.
+- [x] `aiosecurityspy/README.md`, `aiosecurityspy/CHANGELOG.md` -- document the breaking signature change, how to obtain the offset, and that a caller who knows the server's IANA zone should pass it instead.
 
 **Acceptance Criteria:**
 - Given the library tree, when `uv run ruff check . && uv run ruff format --check . && uv run mypy --strict src tests && uv run pytest -q` are run, then all pass with zero findings.
@@ -71,6 +73,15 @@ warnings: [oversized]
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-08-29 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 1 (high 1, medium 0, low 0)
+- defer: 1 (low 1)
+- reject: 8
+- addressed_findings:
+  - `[high]` `[patch]` `_decode_utc_offset` accepted exactly +/-86400s (24h) as a usable offset, but `datetime.timezone` rejects an offset that is not strictly within +/-24h -- the documented caller pattern `timezone(info.utc_offset)` in the README would raise `ValueError` at that exact boundary. Tightened `_MAX_UTC_OFFSET_SECONDS` to `24*60*60 - 1` (exclusive of the illegal boundary), updated the `ServerInfo.utc_offset` docstring, and replaced the test asserting +/-86400 was usable with one asserting it is rejected plus a new test pinning the true boundary at +/-86399 (including a direct `timezone(...)` construction to prove the documented pattern no longer raises there).
 
 ## Design Notes
 
@@ -86,3 +97,25 @@ warnings: [oversized]
 - `cd aiosecurityspy && uv run ruff check . && uv run ruff format --check .` -- expected: zero findings
 - `cd aiosecurityspy && uv run mypy --strict src tests` -- expected: no issues, and no call site left relying on a default
 - `cd aiosecurityspy && uv run pytest -q` -- expected: all pass
+
+## Auto Run Result
+
+**Summary:** SecuritySpy's `systemInfo.server` publishes `seconds-from-gmt`, the server's own UTC offset, which the library never decoded -- four public entry points instead silently defaulted `server_timezone` to `UTC`, producing wrong instants (verified: a five-hour skew on the live 6.21 heartbeat) on any server that isn't actually on UTC. Fixed by decoding the offset onto a new `ServerInfo.utc_offset` field and removing the `UTC` default everywhere, making the caller state a zone explicitly -- matching the precedent `Capture.from_api` already set.
+
+**Files changed:**
+- `aiosecurityspy/src/aiosecurityspy/models.py` -- added `ServerInfo.utc_offset: timedelta | None`, decoded via a new `_decode_utc_offset()` helper from `seconds-from-gmt`; `None` on absent/non-integral/out-of-range, never coerced to zero.
+- `aiosecurityspy/src/aiosecurityspy/events.py` -- `parse_event_line`'s `server_timezone` is now required; corrected the docstring's false claim that no endpoint exposes the timezone.
+- `aiosecurityspy/src/aiosecurityspy/stream.py` -- `SecuritySpyEventStream.__init__`'s `server_timezone` now required.
+- `aiosecurityspy/src/aiosecurityspy/client.py` -- `event_stream()` and `async_get_captures()` both now require `server_timezone`.
+- `aiosecurityspy/tests/*` -- every existing call site of the four entry points updated to pass an explicit zone; new tests cover every I/O-matrix row (offset decoded, positive/non-hour offset, absent, unusable, zero-as-real, the ±24h boundary, live heartbeat decode, ZoneInfo agreement, DST-boundary divergence, required-kwarg `TypeError`).
+- `aiosecurityspy/README.md` -- new "Timezones" section; all four usage examples updated to obtain and pass `server_timezone`.
+- `aiosecurityspy/CHANGELOG.md` -- documents the breaking signature change and the new `ServerInfo.utc_offset` field.
+
+**Review findings breakdown:**
+- 1 patch applied (high severity): `_decode_utc_offset` accepted exactly ±86400s as usable, but `datetime.timezone` rejects that exact boundary -- the documented `timezone(info.utc_offset)` caller pattern would have raised `ValueError` at ±24h. Tightened the bound to `24*60*60 - 1` and corrected the boundary tests.
+- 1 item deferred: no semver-bump or release-process note accompanies this breaking pre-1.0 change ahead of the first PyPI release. Logged to `deferred-work.md`.
+- 8 items rejected as noise or already-covered-by-design: a documented `else UTC` README fallback (a caller choice, not internal library behavior, and the library itself never defaults to UTC); snippet duplication across 3 README examples (cosmetic); a fixed offset going stale across a long-lived reconnecting stream (an already-documented, spec-acknowledged limitation of offsets versus real zones); no cross-client enforcement that a timezone came from the same server (out of scope -- the spec explicitly forbids hidden state/implicit fetches, which is the only mechanism that could enforce this); `TypeError` framed as designed behavior (accurate description of a required-kwarg language guarantee, not a false claim); bool-as-int coercion into a 0/1s offset (speculative, not a payload shape SecuritySpy sends); non-multiple-of-60 offsets accepted (not a validation the spec requires); no runtime type-check on `server_timezone` (matches the existing `Capture.from_api` precedent, which also relies on `mypy --strict` rather than a runtime guard).
+
+**Verification performed:** `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy --strict src tests`, and `uv run pytest -q` all pass cleanly (901 tests) after the patch. Directly confirmed the live heartbeat `20260829062049` decodes to `2026-08-29T11:20:49+00:00` under the server's UTC-5 offset, and that `timezone(...)` no longer raises at the corrected ±86399s boundary.
+
+**Residual risks:** The deferred semver/release-process gap above. Otherwise none identified -- the offset-vs-zone DST limitation is by design and documented in the README's "Timezones" section.

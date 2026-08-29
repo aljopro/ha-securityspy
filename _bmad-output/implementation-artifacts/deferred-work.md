@@ -113,3 +113,6 @@ source_spec: `spec-1-8-server-and-camera-health-decoding.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260828-195436-607b; this entry preserves the lingering recommendation for a deliberate later review.
 status: open
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-13-timestamps-use-the-servers-own-timezone.md`
+  summary: This story ships as a breaking pre-1.0 change (`server_timezone` required on four entry points) with no semver-bump note or CHANGELOG guidance on how it interacts with the first PyPI release the project is about to cut.
+  evidence: Blind Hunter review flagged that `pyproject.toml` still shows `0.1.0` and the CHANGELOG only adds `[Unreleased]` entries; three separate CHANGELOG bullets in this story call the change "BREAKING" with no accompanying version-bump or release-process note. Not caused by this story's code, and not blocking merge, but worth a deliberate pass before the first release ships.
