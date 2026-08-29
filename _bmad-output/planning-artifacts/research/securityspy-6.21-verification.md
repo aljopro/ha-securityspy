@@ -667,6 +667,112 @@ three booleans as `mode` and never sends `schedule` or a value for them to apply
 **Also found:** `ssSetPreset?id={presetId}` in the same source region — the endpoint that
 applies a schedule preset (§5.4's `schedule-preset-list`). Neither modelled nor tested.
 
+## 5.15 A real browser session, captured (HAR, 221 entries) ⭐⭐⭐
+
+Jensen exercised the web app as a privileged user and exported a HAR. This is the first
+evidence taken from the *client's own traffic* rather than from reading its source.
+
+### 5.15.1 There are two API surfaces, not one
+
+Every call in the capture uses a **bare path** (`/caplist`, `/camStatus`, `/getpreview`), never
+the `++` prefix, and authentication is `POST /login` with `user=` and `pass=` form fields,
+answered `303`. A wrong password answers `303` to `login.html?feedback=Login+failed` — **not**
+`401`. So §2's "bare paths redirect to login" is the *browser* surface; the `++` prefix with
+HTTP Basic is the *programmatic* surface, and `aiosecurityspy` is correctly on the latter.
+
+**No `Set-Cookie` and no `Cookie` header appears anywhere** in an unsanitised DevTools export
+that preserved every other header. Combined with the `303` to `.` on success, that points to
+SecuritySpy binding the session to the client address after login rather than issuing a
+cookie. Stated as the reading of the evidence, not as a verified mechanism — proving it needs
+a second client on a different address.
+
+### 5.15.2 `getpreview` is exactly what the library builds ✅
+
+```
+/getpreview?/4/2026-08-29/08-29-2026%202-13-02%20PM%20M%20Back%20Yard.mov?archive=0
+```
+
+Spaces are `%20`, the `/` separators are **not** encoded, and both `?` are literal. That is
+precisely what `_stream_bytes` produces with per-segment `quote(part, safe="")` joined by `/`.
+Story 1.9's encoding fix and the `x-raw-url-template` are confirmed against the real client.
+
+### 5.15.3 Live video is a WebSocket with a binary control protocol ⭐⭐⭐
+
+```
+wss://…:8001/video?cameraNum={n}&vcodec={v}&acodec={a}&fps={f}&apause=1&sizeFraction={s}&auth={t}
+```
+
+`101 Switching Protocols`, with `Upgrade` and `Sec-WebSocket-Key`. Live video is **not** an
+HTTP MJPEG pull. The HAR shows a single parameter combination; the permutations come from
+`Player.js:307-316` (`startStream`):
+
+| parameter | values | chosen by |
+|---|---|---|
+| `vcodec` | `jpeg`, `h264`, `h26x` | `jpeg` when MSE is unavailable or JPEG is forced; `h26x` when the browser reports H.265 support, else `h264` |
+| `acodec` | `ulaw` or **empty** | `ulaw` only when the camera has audio **and** the account holds `PERM_AUDIORCV`; empty otherwise |
+| `fps` | integer or empty | caller-supplied; empty means the server decides |
+| `sizeFraction` | `1, 2, 4, 8, 16` | a **divisor**: the largest power of two whose downscale still covers the display area (`Player.js:299`) |
+| `apause` | always `1` | constant |
+| `auth` | token, empty in this capture | role unknown under Basic auth |
+
+**`acodec` is gated on the permission mask** — `this.cam.perm & PERM_AUDIORCV`. That is the
+client consuming bit 9 exactly as §5.11 describes, and it means a camera that is offline (and
+so missing the bit) would be asked for a silent stream.
+
+**The socket is bidirectional.** `sendMessageToServer` (`Player.js:430`) sends a 4-byte
+binary frame plus optional payload:
+
+```
+byte 0: opcode   byte 1: val1   bytes 2-3: val2 (big-endian)   bytes 4+: payload
+```
+
+with opcodes `OP_SIZE=1`, `OP_PLAY_PAUSE=2`, **`OP_SCHED=3`**, **`OP_OVERR=4`**, `OP_AUDIO=5`.
+So schedule and override can be set **over the video socket**, not only via `++ssSetSchedule`
+— a second arming path the project has never seen. `OP_SIZE` also carries an H.265 flag in
+`val2`, so quality is renegotiated mid-stream rather than by reconnecting.
+
+**Consequences.** `aiosecurityspy` has no WebSocket support of any kind. Epic 2's story 2.6
+("live video exists but stays out of the way") is specced with no evidence for how a stream is
+requested, and the real answer is a WebSocket with a binary side-channel — a substantially
+larger undertaking than an image URL. None of this is verified by us beyond the `101` and the
+source read; the frame format is `client-source`.
+
+### 5.15.4 Four endpoints the project does not model
+
+| endpoint | shape | notes |
+|---|---|---|
+| `/ptzcommand` | `?cameraNum={n}&code={c}&speed={0-100}` → `200`, body `OK` | Codes observed: 2, 6, 7, 11, 21, **99**. 99 always follows a movement command and carries `speed=0` — it reads as *stop*. Not verified. |
+| `/clip` | `?cameraNum={n}&movieType=1&start={ISO}&end={ISO}` → `206 video/mp4`, served with `Range` | **Takes a full ISO instant**, unlike `caplist`'s date-only bounds. A 24-hour range was aborted client-side; a 1-minute range returned `206`. |
+| `/cliplist` | no parameters → `200` `[]` | Empty on this server; shape unknown. |
+| `/dashImage` | `?formData&type1={n}&item1={n}&type2={n}&smooth={n}&width=&height=&date=&dark={0\|1}&{cachebuster}` → `200 image/png` | Server-rendered dashboard graphs. Note the **`formData` sentinel appearing in a GET query string**, and a bare trailing random integer as a cache-buster. |
+
+### 5.15.5 How the UI actually disarms a camera — and why it collides with AD-7 ⚠
+
+```
+/ssSetSchedule?cameraNum=4&schedule=0&override=-1&mode=CMA   → 200 OK
+```
+
+This is the disarm control. It assigns **schedule `0` (Disarmed 24/7)** to all three modes,
+with `override=-1`. Two things follow:
+
+1. **`override=-1` is confirmed as the "leave as-is" sentinel**, matching
+   `ARM_OVERRIDE_UNCHANGED` exactly. Previously read from source; now seen on the wire.
+2. **Persistent arming and disarming is expressed by assigning a schedule, not an override.**
+   That is the operation AD-7 forbids the library from performing. An override is transient
+   and bounded by design, so it cannot express "disarmed until I say otherwise" — which is what
+   a Home Assistant switch or alarm-panel entity means.
+
+**This trips story 1.16's `Block If` verbatim** ("the fix would require sending `schedule=` to
+express arming"). AD-7 is not wrong about what an override does; it is that the library has no
+operation for the thing the UI's disarm button performs. Epic 6's stories 6.1 and 6.4 cannot
+be built without resolving it, and it is an architecture decision, not an implementation one.
+
+### 5.15.6 Cadence and absences
+
+`camStatus` was polled 8 times in 22 seconds — roughly every 3 seconds, far more aggressive
+than a Home Assistant coordinator should be. Neither `systemInfo` nor `eventStream` appears
+anywhere in the capture: the pages exercised here do not use them.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
