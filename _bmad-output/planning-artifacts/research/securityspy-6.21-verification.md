@@ -311,6 +311,27 @@ read *"5 hours ago"* for someone who just walked past. The fix is confined to th
 boundary — no reducer or coordinator logic needs to change — but until it lands the
 Observation Record's displayed values are wrong by the server's offset.
 
+### An offset is not a timezone
+
+`seconds-from-gmt` is the offset **in force when the reading was taken**, not a zone. It is
+correct for live events and wrong by an hour for historical captures across a daylight-saving
+boundary — verified:
+
+| Record | Decoded with fixed `-18000` | Decoded with `ZoneInfo("America/Chicago")` |
+|---|---|---|
+| `20260829062049` (August, CDT) | `2026-08-29T11:20:49Z` | `2026-08-29T11:20:49Z` ✅ agree |
+| `20260115062049` (January, CST) | `2026-01-15T11:20:49Z` | `2026-01-15T12:20:49Z` ❌ **1 h out** |
+
+`caplist` routinely spans a month and can span a transition, so this is reachable, not
+theoretical. SecuritySpy publishes no zone name anywhere, so the library cannot be fully
+DST-correct on its own. The library's existing `naive.replace(tzinfo=tz).astimezone(UTC)`
+handles both inputs correctly — a real `ZoneInfo` resolves the offset per timestamp — so the
+fix is entirely about *sourcing* the right `tzinfo`, never about the conversion.
+
+Note the structure is already right: `StreamEvent.timestamp` is timezone-aware and normalised
+to UTC, and `raw_timestamp` preserves the original string. Nothing is lost; only the assumed
+offset is wrong.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,

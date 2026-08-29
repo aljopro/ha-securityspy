@@ -631,6 +631,12 @@ So that "last seen" readings are not silently hours wrong. *(FR-41; protects FR-
 **When** it decodes
 **Then** the caller's choice still wins
 
+**Given** a historical capture recorded on the other side of a daylight-saving transition
+**When** it is decoded using only the offset the server publishes now
+**Then** the limitation is documented, and a caller able to supply the server's actual zone is
+told to do so — because a fixed offset cannot be correct year-round and SecuritySpy publishes
+no zone name
+
 ---
 
 ## Epic 2: Connect and Model
