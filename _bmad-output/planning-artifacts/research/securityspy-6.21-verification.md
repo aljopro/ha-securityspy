@@ -1018,8 +1018,16 @@ Source: **https://bensoftware.com/securityspy/web-server-spec.html** (Ben Softwa
 server API). Everything in §4–§5.18 was reverse-engineered; this section sets it against what
 the vendor publishes.
 
-**How much weight to give it (Jensen, who knows the vendor): the spec is stale and not kept
-up.** That is visible in the document itself — `settings-general` still names
+**This was already known and was re-derived the hard way.** Jensen flagged the spec as
+unreliable at the start of the project, and `securityspy-api-reference.md` records it in its
+opening paragraph — "a partial and dated view of SecuritySpy 6.x" — as does the brief's
+memlog. This section restates a day-one conclusion rather than reaching a new one. The lesson
+is procedural: **read the project's own reference preamble before re-litigating a source it
+already assessed.** A local mirror now lives at `~/doc-repos/securityspy/` per the doc-repos
+convention, with a README carrying this framing.
+
+**How much weight to give it: the spec is stale and not kept up.** That is visible in the
+document itself — `settings-general` still names
 `settingsPassword`/`quittingPassword` where 6.21 sends `setPass`/`quitPass`, and the documented
 `ptz/controls` path returns `404`. So treat the spec as:
 

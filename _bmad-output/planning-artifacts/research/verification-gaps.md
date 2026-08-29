@@ -232,8 +232,10 @@ marker. Two rules keep it worth trusting:
   also covers `wan-address`, `deviceList` and both `auth=` forms under the widened AD-13.
 - **Read the vendor spec first for DISCOVERY, then verify everything live.** It is stale — it
   names 6.20-era settings fields and a `ptz/controls` path that 404s — so it is useful for
-  learning what exists and unreliable on exact shapes.
-  https://bensoftware.com/securityspy/web-server-spec.html
+  learning what exists and unreliable on exact shapes. Mirrored locally at
+  `~/doc-repos/securityspy/` with a README explaining how far to trust it; upstream is
+  https://bensoftware.com/securityspy/web-server-spec.html. **This was established on day one**
+  in `securityspy-api-reference.md`'s preamble and re-derived in §5.19 for want of reading it.
   documents `cameramodes` (armed state as plain text, and it answers for disabled cameras) and
   `getptzcapabilities` (a PTZ bitmask) — both rediscovered the hard way, and both better sources
   than what the library currently derives (§5.19).
