@@ -293,3 +293,14 @@ marker. Two rules keep it worth trusting:
 - **Prefer the documented name `setSchedule`** over `ssSetSchedule`; both work on 6.21 (§5.19.1).
 - **Adopt `++cameramodes` for arming state.** It may also resolve the inventory-of-record
   problem for arming specifically, since it answers for cameras `systemInfo` omits (§5.12).
+- **⚠ Account writes through the web settings form did not persist on 6.21.** Two separate
+  changes made through the account editor — a per-camera permission matrix and a password
+  rotation — were submitted with a well-formed `POST` body and **neither reached the server**:
+  the permission masks never changed, and the prior password still authenticated afterwards
+  while the new one returned `401`. By contrast a `++settings-cameras` write in the same
+  session (G4) persisted and restored cleanly, so this is specific to the account/web settings
+  form, not to writes generally. Cause not established — candidates are a configured settings
+  password (`setPass`, §5.18.3) gating the write, or the form requiring a separate apply step.
+  **Operational lesson: never trust the dialog. Verify an account change by authenticating with
+  the new credential.** A rotation that silently fails leaves the old password live while the
+  operator believes it is retired.
