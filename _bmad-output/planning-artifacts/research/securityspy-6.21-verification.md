@@ -21,12 +21,21 @@ evidence named.** Nothing here is inferred from behaviour alone where source was
 |---|---|
 | Source read | `/Applications/SecuritySpy.app/Contents/Resources/Web` (client) and `Contents/MacOS/SecuritySpy` (`strings` only) |
 | App version | `CFBundleShortVersionString` = **6.21**; `systemInfo.server.version` = `6.21` |
-| Probes | `GET` only, via the repo's gitignored `.env` probe credentials |
+| Probes | `GET` throughout, plus **one** authorised settings write (§5.8), via the repo's gitignored `.env` credentials |
 | Probe account | A **least-privileged** web user — `permissions` = `839` on all 11 cameras |
-| Not done | No `POST`, no write of any kind |
+| Second account | A temporary account cycled **Live → Live+Captures → Administrator** to A/B the permission surface, **since deleted** (confirmed: it now returns `401`) |
+| Live state changes | Jensen unplugged one camera and disabled another, on request, to observe the fault and disabled paths (§5.10, §5.12) |
+| Not done | The `++ssSetSchedule` write was never performed; it remains the only `client-source` operation in the OpenAPI description |
 
 The probe account being unprivileged is not a limitation to work around — it is what exposed
 the permission behaviour in §5, which is the most consequential finding here.
+
+**The pass is complete.** All seven gaps in `verification-gaps.md` are closed, seven defects
+were found (five specced as stories 1.11–1.15, two carrying decisions rather than code), and
+8 of the 9 operations in `aiosecurityspy/docs/securityspy-openapi.yaml` now carry
+`x-verification: live-6.21`. Two findings changed how the *integration* must be built rather
+than the library: the inventory-of-record choice in §5.12, and the non-static permission mask
+in §5.11.
 
 ## 2. Infrastructure
 

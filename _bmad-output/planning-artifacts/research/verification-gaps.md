@@ -1,19 +1,29 @@
 ---
 title: SecuritySpy verification gaps and action items
 date: 2026-08-29
-status: open
+status: closed
 companion_to: securityspy-6.21-verification.md
 ---
 
 # Verification Gaps and Action Items
 
 What could not be verified against the live 6.21 server on 2026-08-29, what each gap
-blocks, and what access would close it. Ordered by value-per-risk.
+blocked, and what closed it. Ordered by value-per-risk.
 
-**Why this list exists:** four defects have now been found, and three of them were the same
-failure — a wire shape or type *guessed* from research, then pinned by a fixture written to
-match the guess, so no test could ever fail. Everything still unverified below is exposed to
-that same failure mode.
+**Why this list exists:** the pass found seven defects, and three were the same failure —
+a wire shape or type *guessed* from research, then pinned by a fixture written to match the
+guess, so no test could ever fail. Everything below was exposed to that same failure mode.
+
+**Status: all seven gaps closed.** G1–G6 were settled by live observation. G7 is closed as
+far as evidence allows — bits 8 and 9 turned out to be already modelled, and bit 1 is narrowed
+to "granted with Captures" but deliberately left unnamed. Access used: an ordinary probe
+account, plus a temporary account cycled through Live → Live+Captures → Administrator, **now
+deleted** (deletion confirmed: it returns `401`). All probing was read-only except one
+authorised settings write (§5.8) recorded there.
+
+**What outlived the gaps** are the two decisions in "Documentation follow-ups" and the two
+defects still awaiting implementation, listed below. Those are the live items; the gap
+sections are history.
 
 ## Access-gated gaps
 
@@ -112,7 +122,7 @@ Settled facts:
 - Error code **64 = "Host is down"** is the first real code observed. The library does not
   enumerate codes and should not start: 64 is one value from an unknown space.
 
-### G7 — Permission bit 1 (value 2) 🟡 NARROWED — bits 8 and 9 resolved
+### G7 — Permission bit 1 (value 2) ✅ CLOSED 2026-08-29 — as far as evidence allows
 Read `camera-list[].permissions` under three permission types on the same account, with
 camera 7 unplugged throughout:
 
@@ -147,8 +157,8 @@ modelled correctly.
 
 | # | Defect | Story | Status |
 |---|---|---|---|
-| 1 | `403` reported as rejected credentials; permission bitmask missing three bits | 1.11 | Specced, `ready-for-dev` |
-| 2 | `systemInfo` camera inventory decodes to zero against a real server | 1.12 | Specced, `ready-for-dev` |
+| 1 | `403` reported as rejected credentials; permission bitmask missing three bits | 1.11 | ✅ done |
+| 2 | `systemInfo` camera inventory decodes to zero against a real server | 1.12 | ✅ done |
 | 3 | `Capture.file_size` reads a float-MB field with `_as_int`, losing 99.92% of values and implying bytes | 1.15 | Specced, `ready-for-dev` |
 | 4 | Research doc corrections (permissions, trigger keys, `systemInfo` shape, override count, `caplist` fields) | n/a | Annotated inline in the reference doc |
 | 5 | Server timezone published as `seconds-from-gmt` but ignored; every event and capture timestamp is off by the server's UTC offset | 1.13 | Specced, `ready-for-dev` |
@@ -166,7 +176,9 @@ marker. Two rules keep it worth trusting:
    authoritative.
 2. **Never upgrade an `x-verification` marker without evidence.** `research-only` becomes
    `live-6.21` only when a live response has actually been observed. Closing the gaps above
-   is what moves those markers — three of the eight operations are still `research-only`.
+   is what moves those markers. As of 2026-08-29, **8 of 9 operations are `live-6.21`**; only
+   `++ssSetSchedule` remains `client-source`, because that write was never performed against
+   the live server. Do not upgrade it without doing so.
 
 ## Documentation follow-ups
 
