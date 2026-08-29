@@ -2,12 +2,13 @@
 title: "Story 1.16: mode selects which capture modes a write targets"
 type: 'bugfix'
 created: '2026-08-29'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: true
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
 baseline_revision: 'a94231a89747a6260e1bdfcbf20b35531c8d3e15'
+final_revision: 'e40982a8b4900764faf63c20a02589d89b357546'
 ---
 
 <intent-contract>
