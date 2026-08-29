@@ -223,3 +223,7 @@ marker. Two rules keep it worth trusting:
   network layout (a personal `*.viewcam.me` hostname; camera LAN IPs and ONVIF UUIDs). Neither
   is a credential, so story 1.7 holds as written — but a diagnostics dump attached to a public
   issue would carry them. One decision, covering both (§5.11, §5.17.2).
+- **`is_credential_key` misses SecuritySpy's `*Pass` fields.** `setPass`, `fsPass` and
+  `quitPass` on `++settings-general` are real passwords and are not matched, while
+  `videoPassthrough` is correctly *not* matched (§5.18.3). Latent today because the library
+  reads none of those pages. Cheap to fix and squarely within that function's purpose.

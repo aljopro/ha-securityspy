@@ -942,6 +942,69 @@ not assume a time is present.
   it is correct — but the OpenAPI description should state that the parameter is required, since
   the bare path returns an 85 KB HTML form.
 
+## 5.18 The settings surface, captured (second HAR, 243 entries) ⭐⭐⭐
+
+A second capture covering the settings pages. **Twelve** settings endpoints exist, each a
+`GET` to read and a `POST` to write: `-cameras`, `-general`, `-audio`, `-display`, `-sched`,
+`-storage`, `-comp`, `-uploads`, `-email`, `-web`, `-license`, `-order`. Also new here:
+`/image` (the bare-path twin of `++image`), `/diskInfo`, `/refreshLicenseInfo`.
+
+### 5.18.1 The browser writes the WHOLE form; our partial write is better
+
+`POST /settings-cameras` was sent five times, each a **2,757-byte body carrying every field**,
+including the camera's device `username` and `password` in cleartext. The browser does a full
+read-modify-write on every save.
+
+This does **not** contradict §5.8's partial-write finding — that was verified directly, one
+field changing 1 of 129 keys — it means the two approaches both work and **the library's is the
+safer one**. A partial write never re-transmits the camera's device credentials; the browser's
+full-form write puts them on the wire on every settings save. Worth stating explicitly in
+`CameraSettingsPatch`, because "the client does it this way" would be a tempting argument for
+switching.
+
+### 5.18.2 Body shapes are not uniform
+
+| endpoint | body |
+|---|---|
+| most `settings-*` | `formData&field=value&…` — the sentinel then named fields |
+| `settings-uploads` | **`formData`** alone, 8 bytes — an empty form is valid |
+| **`settings-order`** | **`order=4,3,2,0,6,1,5,7,10,9,8`** — no `formData` sentinel at all; a bare comma-separated camera order |
+
+So `formData` is not universal. Anything modelling a settings write must not assume it.
+
+### 5.18.3 Credential-bearing fields the anonymizer does not know ⚠
+
+SecuritySpy's settings carry several real secrets under names `is_credential_key` does not
+match:
+
+| field | endpoint | `is_credential_key` | reality |
+|---|---|---|---|
+| `password` | `-cameras`, `-email` | ✅ `True` | device / SMTP password |
+| `username` | several | ✅ `True` | — |
+| **`setPass`** | `-general` | ❌ `False` | settings password |
+| **`fsPass`** | `-general` | ❌ `False` | full-screen exit password |
+| **`quitPass`** | `-general` | ❌ `False` | quit password |
+| `videoPassthrough` | `-web` | ❌ `False` | ✅ correct — *not* a secret despite the name |
+
+The function is pleasingly not naive — it does not false-positive on `videoPassthrough` — but
+it misses SecuritySpy's `*Pass` convention. **Latent, not live:** the library reads none of
+these pages today, so nothing leaks now. It becomes real the moment any consumer puts a
+`settings-general` payload into a diagnostics dump. `is_credential_key` exists precisely to
+know this protocol's credential names, so it should know these three.
+
+### 5.18.4 Accounts: safe to read, credential-bearing to write
+
+`POST /settings-web` carries `account={…"username":"…","password":"…"…}` in cleartext — the
+account editor submitting a password, which is unavoidable when setting one.
+
+**The read side is clean.** `GET ++settings-web?format=json` returns 30 keys including an
+`accounts` array of 3 accounts with **no `password` field at all** (verified by structure;
+values were never displayed). So enumerating accounts does not expose their passwords, and an
+earlier worry on my part was unfounded.
+
+Also confirms §5.11: `wanAddress` and `ddnsName` are configured values, which is why a
+privileged account sees the real `*.viewcam.me` name and an ordinary one sees the connected host.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
