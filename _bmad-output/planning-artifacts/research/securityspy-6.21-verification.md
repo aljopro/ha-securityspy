@@ -1012,6 +1012,67 @@ earlier worry on my part was unfounded.
 Also confirms §5.11: `wanAddress` and `ddnsName` are configured values, which is why a
 privileged account sees the real `*.viewcam.me` name and an ordinary one sees the connected host.
 
+## 5.19 The official spec — what is documented, and what we are trusting anyway ⭐⭐⭐
+
+Source: **https://bensoftware.com/securityspy/web-server-spec.html** (Ben Software's own web
+server API). Everything in §4–§5.18 was reverse-engineered; this section sets it against what
+the vendor actually publishes. A documented endpoint is a contract. An undocumented one can
+change or disappear in any release without that being a breaking change on their side.
+
+### 5.19.1 Our operations, by documentation status
+
+| operation | documented? | note |
+|---|---|---|
+| `++systemInfo` | ✅ | `format` |
+| `++eventStream` | ✅ | `version` is **required** — the library does send it (`EVENT_STREAM_VERSION`); no defect |
+| `++getfile` / `++getfilehb` / `++getfilelb` | ✅ | path-triple form as we build it |
+| `++settings-cameras` | ✅ | but see §5.19.3 on field names |
+| `++ssSetSchedule` | ⚠ **name differs** | spec calls it **`setSchedule`**. Both return `200 OK` live. Prefer the documented name. |
+| `++camStatus` | ❌ **undocumented** | our cheap health poll |
+| `++caplist` | ❌ **undocumented** | the entire capture history feature |
+| `++getpreview` | ❌ **undocumented** | thumbnails |
+
+**Three of nine operations rest on undocumented endpoints**, and they carry the capture
+history and the health poll — not peripheral features. This does not mean stop using them:
+they are what the shipped client itself uses, and there is no documented equivalent for
+`caplist`. It means the risk is *known and recorded* rather than assumed away, and that a
+future SecuritySpy release breaking one of them is a foreseeable event, not a surprise.
+
+### 5.19.2 Documented endpoints worth adopting
+
+- **`++cameramodes?cameraNum={n}`** → plain text `C:ARMED\nM:ARMED\nA:ARMED`. A documented
+  read of the armed state. Better than deriving it from `systemInfo`'s `cc-mode`/`mc-mode`/
+  `a-mode`, and it answers **for a disabled camera**, which `systemInfo` omits entirely
+  (§5.12) — so it may resolve the inventory-of-record problem for arming state specifically.
+- **`++getptzcapabilities?cameraNum={n}`** → a bitmask; `0` on Kitchen, **`63`** on Back Yard.
+  A documented capability read, far better than inferring PTZ from the permissions mask, which
+  §5.11 showed also varies with camera state.
+- Also documented and unmodelled: `multiplex`, `download`, `triggermd` (manual trigger — has
+  side effects, not exercised), `setPreset`, `sounds`, `scripts`, `image`, `video`, `hls`,
+  `hls_mediaplaylist`, `stream`, `audio`.
+
+### 5.19.3 Where the spec is stale, and the `auth` warning it confirms
+
+- **`settings-general` field names differ.** The spec lists `settingsPassword` and
+  `quittingPassword`; the live form sends `setPass` and `quitPass` (§5.18.3). Same fields,
+  different names — so the spec is authoritative on *what exists*, not on exact spelling.
+- **`ptz/controls` returns `404`** on 6.21, and the web UI uses `ptzcommand?cameraNum=&code=&speed=`
+  rather than the documented `ptz/command?cameraNum=&command=&speed=`. Two PTZ surfaces, at
+  least one stale.
+- **`sounds` and `scripts`** return `401` to the probe account — permission-gated, and another
+  instance of §5.13's `401`-means-permission.
+- **The spec confirms §5.16.1's warning in the vendor's own words:** "SecuritySpy also supports
+  the use of an *auth* parameter on any resource ... the Base64-encoded version of the string
+  *username:password*." Documented, on *any* resource, and still exactly the thing AD-13
+  forbids this project from constructing.
+
+### 5.19.4 Method note
+
+Reading the vendor spec should have come *before* reverse-engineering, not after. Doing it
+last meant `cameramodes` and `getptzcapabilities` were rediscovered the hard way, and
+`setSchedule` was implemented under a name the vendor does not use. The reverse-engineering was
+still necessary — `caplist` and `camStatus` appear nowhere — but the order cost effort.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
