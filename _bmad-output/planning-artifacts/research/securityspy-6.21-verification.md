@@ -731,11 +731,12 @@ So schedule and override can be set **over the video socket**, not only via `++s
 — a second arming path the project has never seen. `OP_SIZE` also carries an H.265 flag in
 `val2`, so quality is renegotiated mid-stream rather than by reconnecting.
 
-**Consequences.** `aiosecurityspy` has no WebSocket support of any kind. Epic 2's story 2.6
-("live video exists but stays out of the way") is specced with no evidence for how a stream is
-requested, and the real answer is a WebSocket with a binary side-channel — a substantially
-larger undertaking than an image URL. None of this is verified by us beyond the `101` and the
-source read; the frame format is `client-source`.
+**Scope of this finding — corrected.** This is how the *web player* streams, and only that.
+It is **not** the only way to get video out of SecuritySpy, and an earlier draft of this
+section wrongly generalised it into "live video is not an HTTP MJPEG pull". The player uses a
+WebSocket because it wants H.264/H.265 into MediaSource plus a control channel; the HTTP API
+offers simpler options that suit Home Assistant better. See §5.16. None of the frame format is
+verified by us beyond the `101` and the source read; it stays `client-source`.
 
 ### 5.15.4 Four endpoints the project does not model
 
@@ -772,6 +773,56 @@ be built without resolving it, and it is an architecture decision, not an implem
 `camStatus` was polled 8 times in 22 seconds — roughly every 3 seconds, far more aggressive
 than a Home Assistant coordinator should be. Neither `systemInfo` nor `eventStream` appears
 anywhere in the capture: the pages exercised here do not use them.
+
+## 5.16 Media delivery: four options, all simpler than the WebSocket ⭐⭐⭐
+
+Prompted by Jensen pointing at SecuritySpy's built-in **URL Generator** ("generates URLs for
+standard media streams ... to clients such as VLC or Homebridge"). Verified live except where
+noted:
+
+| endpoint | result | notes |
+|---|---|---|
+| `++image?cameraNum={n}` | `200 image/jpeg` | Single snapshot. Honours `width=` and `quality=` (234 KB → 21 KB at `width=320&quality=50`). |
+| `++video?cameraNum={n}` | `200 multipart/x-mixed-replace; boundary=ssBoundary8345` | A plain **MJPEG stream** over HTTP. |
+| `hls?cameraNum={n}` (and `++hls`) | `200 application/x-mpegURL` | **Adaptive HLS.** The master playlist offers three variants pointing at `++hls_mediaplaylist?cameraNum={n}&quality={0,1,2}`, at ~218 kbps / 750 kbps / 3.1 Mbps. |
+| `rtsp://{host}:8000/stream?cameraNum={n}&vcodec=h26x` | port 8000 confirmed open | From the URL Generator. H.264/H.265. **A different port from the web server** — 8000 vs 8001 here. Not exercised. |
+| `++audio?cameraNum={n}&format=aac` | `200 audio/aac` | Audio alone. Also `&sampleRate=16000`. |
+
+`++stream?...` appears in the binary but returns `404` on 6.21; treat it as stale.
+
+**This overturns the conclusion drawn in §5.15.3.** Home Assistant's camera platform wants a
+still image and a stream URL, and SecuritySpy publishes both over ordinary HTTP, inside the
+transport `aiosecurityspy` already has. **Story 2.6 needs no WebSocket support.** `++image` is
+a snapshot; HLS or RTSP is the stream. The WebSocket is the web player's private
+implementation, not the API's only door.
+
+### 5.16.1 The `auth` token — the right answer to AD-13 for URLs ⭐
+
+The URL Generator offers an **authentication token**, described in its own words as allowing
+"access to the specified resource only, without revealing the username/password", and
+"invalidated if the account is changed or deleted". The binary shows the format is
+`&auth=!{...}` (leading `!`) and that the parameter is accepted broadly — `hls`, `live`,
+`getpreview`, `getfilehb`/`getfilelb` and their `…d` download variants all take it.
+
+This matters for **AD-13 (credential containment)**. A stream or snapshot URL handed to the
+Home Assistant frontend must not carry `user:pass`. A scoped, revocable token is exactly the
+mechanism for that, and it is the missing piece that made a tokenless URL look unavoidable.
+
+**Not yet verified:** how a token is minted programmatically. The URL Generator is a native
+dialog; no HTTP endpoint for issuing one has been found. If tokens can only be created in the
+macOS UI, they are a manual setup step for the user rather than something the integration can
+arrange — which is a materially different UX and needs deciding before story 2.6.
+
+### 5.16.2 `getpreview` takes AI-class parameters
+
+The binary carries:
+
+```
+getpreview?/{path}?aiTypeHuman={..}&aiTypeVehicle={..}&aiTypeAnimal={..}&auth={..}
+```
+
+So the thumbnail endpoint accepts per-class flags the project has never sent and does not
+model — plausibly controlling detection overlays on the returned image. Untested.
 
 ## 6. Endpoints the client calls that §2.2 omits
 
