@@ -607,6 +607,32 @@ So that the integration is not silently empty against a server that is working p
 
 ---
 
+### Story 1.13: Timestamps use the server's own timezone
+
+As a Home Assistant user,
+I want event and capture times to be the times things actually happened,
+So that "last seen" readings are not silently hours wrong. *(FR-41; protects FR-1..FR-8)*
+
+**Acceptance Criteria:**
+
+**Given** a `++systemInfo` body
+**When** the server block is decoded
+**Then** the server's UTC offset is decoded and exposed, rather than discarded
+
+**Given** an event-stream record or a capture carrying the server's local wall clock
+**When** it is decoded without the caller stating a timezone
+**Then** the server's own offset is used, not an assumed UTC
+
+**Given** a server whose offset is not present or not usable
+**When** a wall-clock value is decoded
+**Then** the behaviour is documented and predictable rather than silently producing a wrong absolute time
+
+**Given** a caller that states a timezone explicitly
+**When** it decodes
+**Then** the caller's choice still wins
+
+---
+
 ## Epic 2: Connect and Model
 
 A user adds their SecuritySpy server through the Home Assistant UI and their cameras appear as correctly-named devices beneath one server hub, with no manual renaming and no entity named after an IP address.

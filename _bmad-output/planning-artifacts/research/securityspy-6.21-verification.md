@@ -254,6 +254,52 @@ every entry. Three corrections:
 invites a consumer to read megabytes as bytes. Same failure class as §7.2: a wire type
 guessed, then pinned by fixtures written to match the guess.
 
+## 5.7 Event stream verified live — framing confirmed, timezone assumption falsified
+
+Captured 45 s of `++eventStream?version=3` from the running server (unbuffered; curl's
+default buffering silently yields an empty file on a low-traffic stream).
+
+**Framing — §3.1 is exactly right, on 6.21 too.** Over the capture: **5 CR (0x0D) bytes,
+0 LF (0x0A) bytes, 0 CRLF pairs.** CR is a *terminator*, not a separator — every record
+including the last ends with CR, so a correct reader finishes with an empty buffer. The
+library's `stream.py` (`_RECORD_SEPARATOR = b"\r"`) handles this correctly; feeding the raw
+capture through its framing logic emitted 5 records with 0 bytes left buffered.
+
+**Record format — §3.2 confirmed.** `20260829062049 0 X NULL`: 14-char timestamp, a
+per-connection counter starting at **0** and incrementing monotonically, `X` for
+non-camera-specific, then the event type. `parse_event_line` decoded 5 of 5, with
+`camera=None` for `X`.
+
+**Heartbeat — §3.3 confirmed.** `NULL` on camera `X` at 062049 / 062059 / 062109 / 062119 /
+062129 — exactly 10 s apart, matching `HEARTBEAT_INTERVAL = 10.0`.
+
+**Response shape.** `200`, `Content-Type: text/plain`, with **no `Content-Length` and no
+`Transfer-Encoding: chunked`** — a close-terminated stream. `Keep-Alive: timeout=20, max=100`
+is advertised but does not apply to the open stream.
+
+### Library defect: the server's timezone is published, and ignored ⭐
+
+`events.py:367` documents an assumption: *"No SecuritySpy endpoint in the protocol research
+exposes the server's timezone, so this defaults to UTC."* **That is false on 6.21.**
+`systemInfo.server` carries all of:
+
+| Field | Live value |
+|---|---|
+| `seconds-from-gmt` | `-18000` (UTC−5) |
+| `current-local-time` | `2026-08-29T05:28:00-05:00` — full ISO-8601 *with offset* |
+| `current-absolute-time` | `809692080.070819` |
+| `time-format` | `12` |
+
+None of the four is decoded anywhere in the library, and the integration never passes
+`server_timezone`, so the `UTC` default stands. Event-stream records carry the server's
+**local** wall clock, so the live heartbeat `20260829062049` decodes as
+`2026-08-29T06:20:49+00:00` when the truth is `2026-08-29T11:20:49+00:00` — **five hours
+wrong**, and wrong by whatever the offset happens to be for any other install.
+
+The same `server_timezone` parameter feeds `Capture.start` (`client.py:600`,
+`models.py:257`), so capture history is shifted identically. That propagates into the
+Observation Record — "last human seen" — which is the integration's headline feature.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
@@ -292,6 +338,7 @@ Both unknowns that would have become Block If entries are resolved:
   Worth confirming the decode path does the right thing with a non-string.
 - The reference doc should be updated with §4's corrections, or annotated as 6.20-era.
 - `Capture.file_size` needs a float type and a documented unit (§5.6).
+- The server's timezone must be decoded from `seconds-from-gmt` and used as the default for every wall-clock decode (§5.7).
 
 ## 8. Open questions
 

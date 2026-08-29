@@ -109,6 +109,11 @@ A long-lived HTTP response that never terminates. Read incrementally.
 
 ### 3.1 Framing — ⚠️ the critical gotcha
 
+> ✅ **Re-verified on 6.21** (`securityspy-6.21-verification.md` §5.7): 5 CR bytes, 0 LF, 0
+> CRLF over a live capture. CR is a terminator, not a separator — the final record ends with
+> one too.
+
+
 **Lines are terminated by CR (0x0D) only. There are zero LF bytes.**
 
 The published spec says *nothing* about line termination. Verified by hexdump over 1,341 events:

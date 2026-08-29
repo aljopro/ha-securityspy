@@ -17,13 +17,16 @@ that same failure mode.
 
 ## Access-gated gaps
 
-### G1 — Event stream is entirely unverified 🔴
-**Blocks:** confidence in story 1.3 (CR framing, heartbeat) — a long-lived streaming parser
-built wholly from research, and the highest-consequence code still resting on assumptions.
-**Access needed:** none believed — the existing probe account should reach `++eventStream`.
-**Risk:** none; a read-only streaming GET, disconnect when done.
-**Action:** probe `++eventStream?version=3`, capture a sample, verify CR-only framing and the
-heartbeat interval against the story 1.3 implementation.
+### G1 — Event stream ✅ CLOSED 2026-08-29
+**Verified live.** CR-only framing confirmed (5 CR, 0 LF, 0 CRLF over a 45 s capture);
+record format, per-connection counter from 0, `X` for non-camera-specific, and the exact
+10 s `NULL` heartbeat all confirmed. The library's framing and `parse_event_line` handled the
+raw capture correctly — 5 of 5 records, 0 bytes left buffered.
+**It also falsified a documented assumption:** the server publishes its timezone
+(`seconds-from-gmt`), which the library ignores. See defect 5 below and
+`securityspy-6.21-verification.md` §5.7.
+**Note for anyone repeating this:** curl buffers by default and yields an empty file on a
+low-traffic stream. Use `-N`.
 
 ### G2 — No user-defined schedules exist 🟢
 **Blocks:** story 1.10's AC "including both the built-in defaults and any the user defined".
@@ -82,6 +85,7 @@ Treat as reserved.
 | 2 | `systemInfo` camera inventory decodes to zero against a real server | 1.12 | Specced, `ready-for-dev` |
 | 3 | `Capture.file_size` reads a float-MB field with `_as_int`, losing 99.92% of values and implying bytes | **none yet** | ⬅ **needs a story — decision pending** |
 | 4 | Research doc corrections (permissions, trigger keys, `systemInfo` shape, override count, `caplist` fields) | n/a | Annotated inline in the reference doc |
+| 5 | Server timezone published as `seconds-from-gmt` but ignored; every event and capture timestamp is off by the server's UTC offset | 1.13 | Story created |
 
 ## Keeping the OpenAPI description honest
 
