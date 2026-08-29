@@ -2,10 +2,10 @@
 title: "Story 1.13: Timestamps use the server's own timezone"
 type: 'bugfix'
 created: '2026-08-29'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
-final_revision: 'PENDING'
+final_revision: 'f70b3a8d2309eed679fb22ac1894c96ceaeb3b0a'
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
 baseline_revision: '5eb5ef649082c74d9d02ac4d7aecdb0e6027a973'
