@@ -627,6 +627,46 @@ granting it to the probe account or another temporary account. The restore point
 intended test is recorded: **Kitchen (camera 10), all three modes `armed`, all three schedule
 ids `1`, all three overrides `0`.**
 
+## 5.14 `++ssSetSchedule` verified by write — `mode` is a TARGET SELECTOR ⭐⭐⭐
+
+Performed with an authorised privileged account against **Kitchen (camera 10)**, every step
+read back and restored; final diff against the baseline is empty.
+
+| # | request | result | changed |
+|---|---|---|---|
+| 1 | `mode=CMA&override=0` | `200`, body `OK` | **nothing** |
+| 2 | `mode=CM&override=0` | `200` | **nothing** |
+| 3 | `schedule=1&override=0&mode=CM` | `200` | nothing (schedule already `1`) |
+| 4 | `schedule=2&override=0&mode=A` | `200` | **`a-schedule-id` 1 → 2** |
+| 5 | `override=2&mode=A` (no `schedule`) | `200` | **`a-schedule-override` 0 → 2** |
+
+**`mode` names which of the three capture modes the write applies to. It is not their armed
+state.** The shipped client confirms it — `ScheduleSetterPanelApply` builds
+`cameraNum, schedule, override, mode` from three checkboxes that select *which* modes the
+chosen schedule and override are applied to. `schedule` and `override` are the values;
+`mode` is the target set. Either value may be sent alone (step 5 proves `override` works with
+no `schedule`), which means **AD-7's rule that arming writes an override and never a schedule
+is achievable exactly as written** — the rule is sound, its implementation is not.
+
+**The response is `200 OK`, `text/plain`, body `OK` (2 bytes), in every case above —
+including the two writes that changed nothing.** The status does not indicate that anything
+was applied. A caller cannot distinguish "applied" from "targeted nothing" without reading
+back.
+
+**Consequence: `async_set_camera_arming` does not do what it says (defect 8).** It passes the
+three booleans as `mode` and never sends `schedule` or a value for them to apply to, so:
+
+- A call with all three modes true and a real `override` **works by accident** — it targets
+  all three modes and applies the override.
+- A call with modes all-false sends `mode=` empty, targeting **nothing**. The docstring calls
+  this "the legal instruction 'disarm all three'"; it is a silent no-op returning `200 OK`.
+- There is **no arm/disarm capability here at all** in the sense the method claims. Arming is
+  expressed by assigning a schedule (`0` = Disarmed 24/7, `1` = Armed 24/7) or an override to
+  the targeted modes.
+
+**Also found:** `ssSetPreset?id={presetId}` in the same source region — the endpoint that
+applies a schedule preset (§5.4's `schedule-preset-list`). Neither modelled nor tested.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,

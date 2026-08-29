@@ -164,6 +164,7 @@ modelled correctly.
 | 5 | Server timezone published as `seconds-from-gmt` but ignored; every event and capture timestamp is off by the server's UTC offset | 1.13 | Specced, `ready-for-dev` |
 | 6 | `CameraSettings.presence_rect` reads `presenceRect`, absent on all 11 cameras, so it is permanently `None` | none yet | Low priority; may be custom-model-conditional and untested |
 | 7 | Media endpoints return `401` for a *permission* failure, byte-identical to a wrong password, so a Live-only account trips credential reauth forever instead of being told it lacks capture access | 1.14 | Specced, `ready-for-dev`; also invalidates a story 1.11 acceptance row |
+| 8 | `async_set_camera_arming` sends the capture modes as if they were an armed state; `mode` actually selects which modes a write targets, so an all-false call is a silent no-op returning `200 OK` | 1.16 | Specced, `ready-for-dev` |
 
 ## Keeping the OpenAPI description honest
 
@@ -206,8 +207,10 @@ marker. Two rules keep it worth trusting:
   means a camera disabled in SecuritySpy loses its Home Assistant entities instead of going
   unavailable — the exact failure story 3.1 targets. Stories 2.3, 2.7 and 3.1 all depend on
   this choice; it should be made once, in the architecture, not three times.
-- **`++ssSetSchedule` is still untested, and needs `PERM_SCHED`.** The probe account's mask
-  (`839`) does not include it, which is why this operation was never exercised. It is the only
-  `client-source` entry left in the OpenAPI description and the only wire evidence behind
-  AD-7, so epic 6's arming stories rest on it. Restore point for the intended test: Kitchen
-  (camera 10), three modes `armed`, three schedule ids `1`, three overrides `0` (§5.13).
+- **`++ssSetSchedule` — CLOSED by live write 2026-08-29 (§5.14).** Performed on Kitchen with a
+  `PERM_SCHED` account, read back at every step, restored with zero fields differing. It
+  exposed defect 8: `mode` is a target selector, not an armed state. All 9 OpenAPI operations
+  now carry `x-verification: live-6.21`.
+- **`ssSetPreset?id={presetId}` is unmodelled.** Found in the shipped client beside
+  `ssSetSchedule` (§5.14); it applies a schedule preset (§5.4). Not tested, not in the library,
+  not in the OpenAPI description. Relevant to epic 6 if presets are ever surfaced.
