@@ -2,12 +2,13 @@
 title: "Story 1.15: Capture size is megabytes, and fractional"
 type: 'bugfix'
 created: '2026-08-29'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
 baseline_revision: 'a68bc576fce795bb45f12720ab7b16a830253d0f'
+final_revision: 'c550256c458c7d982c4f18a12d8c7697bb8b649d'
 ---
 
 <intent-contract>
