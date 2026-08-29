@@ -115,6 +115,22 @@ Building the inventory from `++systemInfo` instead makes a disabled camera's dev
 entities **disappear**, orphaning history and breaking automations that reference them — the
 failure story 3.1 exists to prevent.
 
+**No fallback between the two endpoints is justified on current evidence.** Across four
+account-level permission types — Live, Live+Captures, Administrator and the ordinary probe —
+`++systemInfo` returned all 11 cameras every time. Permission is expressed *inside*
+`camera-list[].permissions`, never by omitting a camera, and both endpoints answer `200` to a
+Live-only account. So `++camStatus` is the membership list and `++systemInfo` is detail; there
+is no case yet where one is visible and the other is not. **Untested: per-camera and per-group
+custom permissions** (gap G8) — the only plausible way a camera could be hidden from one
+surface and not the other. Settle G8 before story 2.3 commits to a single source.
+
+**The practical wrinkle: a disabled camera has no name.** `++camStatus` carries only
+`num, enabled, online, open, err, errDesc` — the name lives in `++systemInfo`, which omits
+disabled cameras entirely. A camera disabled *before* the integration ever saw it therefore has
+a number and no label. Decide deliberately: skip it until first enabled, name it by number, or
+persist the last-known name in the config entry. The middle option is the trap — a device
+called "Camera 6" that silently renames itself later is worse than one that appears late.
+
 **`[ASSUMPTION]` — not verified.** A camera *deleted* from SecuritySpy is expected to vanish
 from `++camStatus` too, which would make "absent from `camStatus`" the discriminator between
 deleted and disabled. Testing it means deleting a real camera, which was not worth doing.

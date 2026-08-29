@@ -1,7 +1,7 @@
 ---
 title: SecuritySpy verification gaps and action items
 date: 2026-08-29
-status: closed
+status: one-gap-open
 companion_to: securityspy-6.21-verification.md
 ---
 
@@ -14,7 +14,8 @@ blocked, and what closed it. Ordered by value-per-risk.
 a wire shape or type *guessed* from research, then pinned by a fixture written to match the
 guess, so no test could ever fail. Everything below was exposed to that same failure mode.
 
-**Status: all seven gaps closed.** G1–G6 were settled by live observation. G7 is closed as
+**Status: seven of eight gaps closed.** G8 was opened afterwards, by the question of whether
+the two inventory endpoints can ever disagree under per-camera permissions. G1–G6 were settled by live observation. G7 is closed as
 far as evidence allows — bits 8 and 9 turned out to be already modelled, and bit 1 is narrowed
 to "granted with Captures" but deliberately left unnamed. Access used: an ordinary probe
 account, plus a temporary account cycled through Live → Live+Captures → Administrator, **now
@@ -152,6 +153,31 @@ camera 7 unplugged throughout:
 
 **Action:** do not assign bit 1 a meaning. Bits 8 and 9 need no action — they are already
 modelled correctly.
+
+### G8 — Do per-camera permissions hide a camera from one endpoint but not the other? 🟡 OPEN
+**Blocks:** whether the inventory needs a *fallback* between `++camStatus` and `++systemInfo`,
+or can read one of them alone (architecture-implications §5b).
+
+**What is settled.** Across four account-level permission types — Live, Live+Captures,
+Administrator, and the ordinary probe — `++systemInfo` returned **all 11 cameras every time**.
+Permission is expressed inside `camera-list[].permissions`, never by omitting a camera. Both
+endpoints also answered `200` to a Live-only account, so neither is gated at the endpoint
+level. On this evidence **no fallback is justified**: `++camStatus` is the inventory and
+`++systemInfo` supplies detail, not membership.
+
+**What is not tested.** The dropdown offers two more types that were never exercised:
+**"Per-camera custom permissions"** and **"Per-group custom permissions"**. Those are the only
+plausible way a camera could be hidden from one surface and not the other — an account granted
+three of eleven cameras might well see a shorter `camera-list`. `++camStatus` was also never
+captured under *any* restricted account, so its filtering behaviour is unknown even for the
+types that were tested.
+
+**Access needed:** one temporary account set to per-camera permissions covering a subset of
+cameras; read both endpoints and compare the camera sets.
+**Risk:** very low, fully reversible.
+**Why it matters:** if the two disagree under per-camera permissions, a single-source inventory
+either over-reports cameras the user may not see or under-reports ones they may. Decide before
+story 2.3 builds devices.
 
 ## Open defects found, and their status
 
