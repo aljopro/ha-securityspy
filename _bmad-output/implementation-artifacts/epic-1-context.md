@@ -18,6 +18,7 @@ Build `aiosecurityspy`: a standalone, published Python library through which a d
 - Story 1.8: Server and camera health decoding
 - Story 1.9: Capture media fetch
 - Story 1.10: Schedule names and the camera enable write
+- Story 1.11: A permission denial is not an authentication failure
 
 ## Requirements & Constraints
 

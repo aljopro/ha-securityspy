@@ -557,6 +557,34 @@ So that a consumer can show which schedule governs a camera and take one out of 
 
 ---
 
+### Story 1.11: A permission denial is not an authentication failure
+
+As a Home Assistant user running the least-privileged SecuritySpy account the security guidance recommends,
+I want a refused-because-unprivileged response reported as a permission problem,
+So that I am not told to re-enter a password that is already correct. *(NFR-15; protects FR-27, FR-28)*
+
+**Acceptance Criteria:**
+
+**Given** valid credentials for an account that lacks the permission an endpoint requires
+**When** the server refuses the request
+**Then** the library raises its typed permission error, not its authentication error
+**And** the error names the permission that was missing where the library can determine it
+
+**Given** credentials that are wrong, absent, or for an account that does not exist
+**When** the server refuses the request
+**Then** the library still raises its authentication error, unchanged from today
+
+**Given** the per-camera permission bitmask
+**When** it is decoded
+**Then** every permission the server actually defines is represented, including the one that gates settings writes
+**And** a permission whose sense is inverted -- set means deny -- is never reported as a granted capability
+
+**Given** a consumer deciding whether to prompt for new credentials
+**When** it inspects a failure from any endpoint
+**Then** an authentication failure and a permission failure are distinguishable without parsing a message string
+
+---
+
 ## Epic 2: Connect and Model
 
 A user adds their SecuritySpy server through the Home Assistant UI and their cameras appear as correctly-named devices beneath one server hub, with no manual renaming and no entity named after an IP address.

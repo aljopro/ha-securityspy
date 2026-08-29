@@ -23,7 +23,7 @@ evidence named.** Nothing here is inferred from behaviour alone where source was
 | App version | `CFBundleShortVersionString` = **6.21**; `systemInfo.server.version` = `6.21` |
 | Probes | `GET` only, via the repo's gitignored `.env` probe credentials |
 | Probe account | A **least-privileged** web user — `permissions` = `839` on all 11 cameras |
-| Not done | No `POST`, no write of any kind, no bad-credential attempts against the live server |
+| Not done | No `POST`, no write of any kind |
 
 The probe account being unprivileged is not a limitation to work around — it is what exposed
 the permission behaviour in §5, which is the most consequential finding here.
@@ -165,13 +165,29 @@ With **valid** credentials that merely lack bit 4 ("Set camera settings"):
 | `++systemInfo`, `++camStatus` | `200` |
 | `++settings-cameras`, `++settings-sched`, `++settings-general` | **`403`**, body `403 Access Denied` (`text/plain`) |
 
-The server cleanly separates *who you are* (401) from *what you may do* (403). This library
-currently maps **both** to `SecuritySpyAuthError` — see §7.1.
+The server cleanly separates *who you are* (401) from *what you may do* (403). Verified
+directly (authorised bad-credential probes; the account was confirmed working afterwards,
+no lockout):
 
-### 5.3 `HEAD` is broken
+| Attempt | Status | Body | `WWW-Authenticate` |
+|---|---|---|---|
+| Valid user, wrong password | `401` | `401 Unauthorized` | `Basic realm="SecuritySpy"` |
+| Nonexistent user | `401` | `401 Unauthorized` | `Basic realm="SecuritySpy"` |
+| No credentials | `401` | `401 Unauthorized` | `Basic realm="SecuritySpy"` |
+| **Valid credentials, missing bit 4** | **`403`** | `403 Access Denied` | **absent** |
+
+So the two are separable three ways — status, body text, and the presence of the
+`WWW-Authenticate` challenge. This library currently maps **both** to
+`SecuritySpyAuthError` — see §7.1.
+
+### 5.3 `HEAD` is broken, and reason phrases are unreliable
 
 `HEAD` on any endpoint returns the malformed status line **`HTTP/1.1 400 OK`** — code 400
 with reason phrase "OK", `Content-Length: 15`. Never use `HEAD` for a reachability probe.
+
+More generally the **reason phrase cannot be trusted**: the `403` also comes back as
+`HTTP/1.1 403 OK`, while the `401` correctly says `Unauthorized`. Parse the numeric status
+only — which this library already does.
 
 ### 5.4 Schedule data shapes (resolves a story 1.10 unknown)
 
@@ -250,7 +266,8 @@ Both unknowns that would have become Block If entries are resolved:
 ## 8. Open questions
 
 1. **Bit 1 (value 2)** — set on every camera, named nowhere.
-2. **Does the `403` body ever differ per endpoint?** Only `403 Access Denied` was observed.
+2. **Does the `403` body ever differ per endpoint?** Only `403 Access Denied` was observed
+   across `settings-cameras`, `settings-sched` and `settings-general`.
 3. **Is `enabled` readable from `++settings-cameras` JSON?** Could not confirm — the probe
    account gets 403. `++camStatus` exposes it regardless, which is the better read path.
 4. **`schedule-preset-list`** was empty; its element shape is unverified.
