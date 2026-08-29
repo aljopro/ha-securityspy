@@ -1016,8 +1016,24 @@ privileged account sees the real `*.viewcam.me` name and an ordinary one sees th
 
 Source: **https://bensoftware.com/securityspy/web-server-spec.html** (Ben Software's own web
 server API). Everything in §4–§5.18 was reverse-engineered; this section sets it against what
-the vendor actually publishes. A documented endpoint is a contract. An undocumented one can
-change or disappear in any release without that being a breaking change on their side.
+the vendor publishes.
+
+**How much weight to give it (Jensen, who knows the vendor): the spec is stale and not kept
+up.** That is visible in the document itself — `settings-general` still names
+`settingsPassword`/`quittingPassword` where 6.21 sends `setPass`/`quitPass`, and the documented
+`ptz/controls` path returns `404`. So treat the spec as:
+
+- **Strong for discovery.** It names endpoints worth knowing about that no amount of watching
+  the web client would reveal — `cameramodes` and `getptzcapabilities` below. This is its real
+  value, and it is why reading it should have come first.
+- **Weak for exact shapes.** Field names and paths have drifted. **Where the spec and a live
+  6.21 response disagree, the live response wins**, always. Nothing verified in §4–§5.18 is
+  downgraded by disagreeing with the document.
+- **Weak evidence about stability, in both directions.** Documented does not mean maintained.
+  Undocumented does not mean unsupported — `camStatus` and `caplist` are what the *shipped
+  client itself* calls on every page load, which is arguably a stronger signal of continued
+  support than an unmaintained page. The honest read is that neither status tells us much, and
+  live verification is what this project actually relies on.
 
 ### 5.19.1 Our operations, by documentation status
 
@@ -1032,11 +1048,11 @@ change or disappear in any release without that being a breaking change on their
 | `++caplist` | ❌ **undocumented** | the entire capture history feature |
 | `++getpreview` | ❌ **undocumented** | thumbnails |
 
-**Three of nine operations rest on undocumented endpoints**, and they carry the capture
-history and the health poll — not peripheral features. This does not mean stop using them:
-they are what the shipped client itself uses, and there is no documented equivalent for
-`caplist`. It means the risk is *known and recorded* rather than assumed away, and that a
-future SecuritySpy release breaking one of them is a foreseeable event, not a surprise.
+**Three of nine operations rest on undocumented endpoints**, carrying the capture history and
+the health poll. Given how stale the document is, this is a *mild* signal rather than an alarm:
+both are called by the shipped web client on every page load, so they are as load-bearing for
+Ben Software as they are for us. Recorded so the status is known, not because it should change
+what we use. `x-vendor-documented` in the OpenAPI is a provenance note, **not** a health warning.
 
 ### 5.19.2 Documented endpoints worth adopting
 
@@ -1051,7 +1067,7 @@ future SecuritySpy release breaking one of them is a foreseeable event, not a su
   side effects, not exercised), `setPreset`, `sounds`, `scripts`, `image`, `video`, `hls`,
   `hls_mediaplaylist`, `stream`, `audio`.
 
-### 5.19.3 Where the spec is stale, and the `auth` warning it confirms
+### 5.19.3 Concrete evidence the spec has drifted, and the `auth` warning it confirms
 
 - **`settings-general` field names differ.** The spec lists `settingsPassword` and
   `quittingPassword`; the live form sends `setPass` and `quitPass` (§5.18.3). Same fields,
@@ -1070,8 +1086,13 @@ future SecuritySpy release breaking one of them is a foreseeable event, not a su
 
 Reading the vendor spec should have come *before* reverse-engineering, not after. Doing it
 last meant `cameramodes` and `getptzcapabilities` were rediscovered the hard way, and
-`setSchedule` was implemented under a name the vendor does not use. The reverse-engineering was
-still necessary — `caplist` and `camStatus` appear nowhere — but the order cost effort.
+`setSchedule` was implemented under a name the vendor does not use.
+
+But the reverse-engineering was not wasted, and would still have been necessary: `caplist` and
+`camStatus` appear nowhere in the spec, and the spec's own field names are wrong for 6.21. The
+right order is **spec first for discovery, live server for truth** — read it to learn what
+exists, then verify every shape against a running server, because the document will not tell
+you when it has fallen behind.
 
 ## 6. Endpoints the client calls that §2.2 omits
 

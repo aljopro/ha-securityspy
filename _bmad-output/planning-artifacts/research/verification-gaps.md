@@ -230,13 +230,17 @@ marker. Two rules keep it worth trusting:
   diagnostics dump attached to a public issue — not LAN traffic, which is plain HTTP to the
   cameras regardless. Cheap to fix and squarely within that function's purpose. **Specced as story 1.17**, which
   also covers `wan-address`, `deviceList` and both `auth=` forms under the widened AD-13.
-- **Read the vendor spec first, next time.** https://bensoftware.com/securityspy/web-server-spec.html
+- **Read the vendor spec first for DISCOVERY, then verify everything live.** It is stale — it
+  names 6.20-era settings fields and a `ptz/controls` path that 404s — so it is useful for
+  learning what exists and unreliable on exact shapes.
+  https://bensoftware.com/securityspy/web-server-spec.html
   documents `cameramodes` (armed state as plain text, and it answers for disabled cameras) and
   `getptzcapabilities` (a PTZ bitmask) — both rediscovered the hard way, and both better sources
   than what the library currently derives (§5.19).
 - **Three of nine operations are undocumented**: `camStatus`, `caplist`, `getpreview`. Keep
-  using them — the shipped client does, and `caplist` has no documented equivalent — but treat
-  an upstream break as foreseeable. The OpenAPI now records this as `x-vendor-documented`.
+  using them. The vendor spec is stale and unmaintained, so "undocumented" is a weak signal —
+  and all three are called by the shipped web client on every page load, which is arguably
+  better evidence of support. `x-vendor-documented` in the OpenAPI is provenance, not a warning.
 - **Prefer the documented name `setSchedule`** over `ssSetSchedule`; both work on 6.21 (§5.19.1).
 - **Adopt `++cameramodes` for arming state.** It may also resolve the inventory-of-record
   problem for arming specifically, since it answers for cameras `systemInfo` omits (§5.12).
