@@ -796,22 +796,51 @@ transport `aiosecurityspy` already has. **Story 2.6 needs no WebSocket support.*
 a snapshot; HLS or RTSP is the stream. The WebSocket is the web player's private
 implementation, not the API's only door.
 
-### 5.16.1 The `auth` token — the right answer to AD-13 for URLs ⭐
+### 5.16.1 The `auth` token — verified, scoped, and not mintable over HTTP ⭐⭐
 
-The URL Generator offers an **authentication token**, described in its own words as allowing
-"access to the specified resource only, without revealing the username/password", and
-"invalidated if the account is changed or deleted". The binary shows the format is
-`&auth=!{...}` (leading `!`) and that the parameter is accepted broadly — `hls`, `live`,
-`getpreview`, `getfilehb`/`getfilelb` and their `…d` download variants all take it.
+The URL Generator issues a token described as granting "access to the specified resource only,
+without revealing the username/password", "invalidated if the account is changed or deleted".
+Two tokens were generated for the **same account and same camera**, differing only in the
+resource, and both were tested live:
 
-This matters for **AD-13 (credential containment)**. A stream or snapshot URL handed to the
-Home Assistant frontend must not carry `user:pass`. A scoped, revocable token is exactly the
-mechanism for that, and it is the missing piece that made a tokenless URL look unavoidable.
+| request (no credentials supplied) | result |
+|---|---|
+| `GET /video?cameraNum=4` + its own token | **`200 multipart/x-mixed-replace`** |
+| `GET /video?cameraNum=4` with no token | `303` to login |
+| `GET /video?cameraNum=**5**` with camera 4's token | `303` — denied |
+| `GET /++image?cameraNum=4` with the *video* token | `401` — denied |
+| `GET /hls?cameraNum=4` with the *video* token | `303` — denied |
+| `GET /++systemInfo` with the video token | `401` — denied |
+| `rtsp://…:8000/stream?cameraNum=4&vcodec=h26x` + its RTSP token | **works** — `h264` 640x480 + `pcm_mulaw`, via `ffprobe` |
+| same RTSP token, `cameraNum=5` | `401 Unauthorized` on `DESCRIBE` |
 
-**Not yet verified:** how a token is minted programmatically. The URL Generator is a native
-dialog; no HTTP endpoint for issuing one has been found. If tokens can only be created in the
-macOS UI, they are a manual setup step for the user rather than something the integration can
-arrange — which is a materially different UX and needs deciding before story 2.6.
+**The scoping claim is true, and tighter than advertised: the token binds to endpoint *and*
+camera**, not merely to a camera. A token for MJPEG on camera 4 opens nothing else at all.
+This is the mechanism **AD-13** wants for any URL handed to the Home Assistant frontend.
+
+**Shape.** `!` + 8 hex characters + 40 hex characters. The 8-character prefix was *identical*
+across the two tokens (same account); the 40-character remainder differed. 40 hex is SHA-1
+length, so this reads as an account identifier followed by a keyed digest over the resource —
+consistent with a server-held secret.
+
+**No HTTP endpoint mints one.** The generator is a native window (`URLGeneratorWindow` in the
+binary); nothing in the shipped web client or the endpoint surface issues a token, and the
+only HMAC strings in the binary are OpenSSL's generic algorithm table, not evidence of this
+token's construction. Jensen confirms she does not know how they are generated either.
+Treating them as **server-minted and human-copied** is the safe reading.
+
+**Consequence for story 2.6 — three options, and the token is not automatically the winner:**
+
+1. **User pastes a token per camera.** Most faithful to AD-13, but manual, and it does not
+   scale: eleven cameras means eleven visits to a macOS dialog, repeated whenever the account
+   changes, since that invalidates every token.
+2. **Home Assistant proxies the stream**, authenticating server-side with the stored
+   credentials and never putting them in a frontend URL. This is ordinary practice for HA
+   camera integrations and satisfies AD-13's intent without any manual step.
+3. **Credentials in the URL.** Rejected outright — this is exactly what AD-13 forbids.
+
+Option 2 looks right for the default path, with option 1 worth offering for users who want a
+direct stream URL. **This is a decision for story 2.6, recorded here, not made here.**
 
 ### 5.16.2 `getpreview` takes AI-class parameters
 
