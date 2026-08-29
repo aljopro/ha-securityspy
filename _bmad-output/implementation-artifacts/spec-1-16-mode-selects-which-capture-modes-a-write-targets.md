@@ -2,11 +2,12 @@
 title: "Story 1.16: mode selects which capture modes a write targets"
 type: 'bugfix'
 created: '2026-08-29'
-status: 'ready-for-dev'
+status: 'in-review'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
+baseline_revision: 'a94231a89747a6260e1bdfcbf20b35531c8d3e15'
 ---
 
 <intent-contract>
@@ -52,11 +53,11 @@ warnings: [oversized]
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `aiosecurityspy/src/aiosecurityspy/client.py` -- express the write as "apply this override to these modes", rejecting an empty target -- a request that returns `200 OK` having done nothing is worse than an error, because nothing downstream can detect it.
-- [ ] `aiosecurityspy/src/aiosecurityspy/models.py` -- correct `mode_string`'s documented meaning -- the "disarm all three" sentence is the whole defect and would re-teach the wrong model to the next reader.
-- [ ] `aiosecurityspy/src/aiosecurityspy/client.py` -- state in the docstring that `200 OK` means accepted, not applied -- callers will otherwise treat it as confirmation.
-- [ ] `aiosecurityspy/tests/` -- assert the query string for each matrix row, including that `schedule=` never appears and that an empty target raises before any request -- the previous tests asserted a `mode` string that was wrong in meaning while being right in spelling, which is exactly why they passed.
-- [ ] `aiosecurityspy/CHANGELOG.md` -- record the breaking behavioural change -- a consumer relying on the old all-false call is relying on a no-op.
+- [x] `aiosecurityspy/src/aiosecurityspy/client.py` -- express the write as "apply this override to these modes", rejecting an empty target -- a request that returns `200 OK` having done nothing is worse than an error, because nothing downstream can detect it.
+- [x] `aiosecurityspy/src/aiosecurityspy/models.py` -- correct `mode_string`'s documented meaning -- the "disarm all three" sentence is the whole defect and would re-teach the wrong model to the next reader.
+- [x] `aiosecurityspy/src/aiosecurityspy/client.py` -- state in the docstring that `200 OK` means accepted, not applied -- callers will otherwise treat it as confirmation.
+- [x] `aiosecurityspy/tests/` -- assert the query string for each matrix row, including that `schedule=` never appears and that an empty target raises before any request -- the previous tests asserted a `mode` string that was wrong in meaning while being right in spelling, which is exactly why they passed.
+- [x] `aiosecurityspy/CHANGELOG.md` -- record the breaking behavioural change -- a consumer relying on the old all-false call is relying on a no-op.
 
 **Acceptance Criteria:**
 - Given an override and a set of capture modes, when the write is issued, then only those modes' overrides change on the server and the others are untouched.
@@ -65,7 +66,34 @@ warnings: [oversized]
 
 ## Spec Change Log
 
+### 2026-08-29 — Review pass (adversarial + edge-case)
+- Docstrings in `models.py` refined after review: the first-pass rewrite said the letter string "is not an armed state", which contradicted the read path — `from_api` decodes `cc-mode`/`mc-mode`/`a-mode` as the camera's current armed state (research §10, "armed/disarmed per mode"), and `mode_string` is used to *display* that state in `Camera.__repr__` and the README. Amended to state the meaning is direction-dependent: decoded from the server they are the armed state; used as a `++ssSetSchedule` write target they select which modes the write applies to. The core correction (an empty string is not "disarm all three"; an empty *target* is refused before any request) is unchanged.
+- Added to the `async_set_camera_arming` docstring: a disarm recipe (target the modes and apply an `ARM_OVERRIDE_DISARMED_*` override, or `ARM_OVERRIDE_NONE` to clear an override) and an explicit warning that `CaptureModes` read back from the server are armed state, not a drop-in write target — the read→write round trip of an all-false camera now raises, and a non-empty read result is a different instruction than restoring the state.
+- Added a real-socket transport test proving a one-letter `mode=A` (the story's flagship §5.14 case) survives yarl's query encoding un-dropped; the stub asserts the params dict it was handed, which cannot distinguish a dropped letter.
+- Renamed `test_arming_200_ok_means_accepted_not_applied` to `test_arming_never_reads_back_after_an_ok_write` — the "applied" half of the claim is a documentation promise with no observable signal, so the test's name now matches the machine-checkable property it pins (exactly one request, no read-back).
+- Fixed a stale `# noqa: FBT003` comment that defended "the positional all-false form must stay expressible" — all-false is now refused, so the comment now states the form stays constructible so the test can prove it is refused.
+- KEEP: the empty-target `ValueError` before any request (the story's core), the `mode_string`/const/method docstring corrections, `schedule=` never sent, `200 OK` accepted-not-applied documented, and the matrix tests asserting the full query-params shape.
+
 ## Review Triage Log
+
+### 2026-08-29 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 6: (high 0, medium 0, low 6)
+- defer: 0
+- reject: 4: (high 0, medium 0, low 4)
+- addressed_findings:
+  - `[low]` `[patch]` `CaptureModes` class + `mode_string` docstrings over-claimed "not an armed state", contradicting the read path (`from_api` decodes armed/disarmed per mode; research §10) and the README's read-back display. Reworded to the direction-dependent meaning: server decode = current armed state; write target = which modes the write applies to. The empty-string correction ("not 'disarm all three'", refused before any request) is preserved.
+  - `[low]` `[patch]` No documented way to express disarming under the corrected semantics. Added a recipe to the method docstring: target the modes and apply an `ARM_OVERRIDE_DISARMED_*` override, or `ARM_OVERRIDE_NONE` to clear an override and let the schedule rule.
+  - `[low]` `[patch]` The read→write round trip of an all-false camera now raises with no warning that `from_api` output is armed state, not a write target. Documented in the method docstring.
+  - `[low]` `[patch]` The single-mode write (`mode=A`, the §5.14 flagship) was only asserted through the stub's params dict; a dropped letter would pass. Added `test_real_arming_single_mode_survives_query_encoding` against a real in-process aiohttp server.
+  - `[low]` `[patch]` `test_arming_200_ok_means_accepted_not_applied` named a property (not applied) the method cannot observe. Renamed to `test_arming_never_reads_back_after_an_ok_write`, matching the property it actually pins (exactly one request).
+  - `[low]` `[patch]` Stale `# noqa: FBT003` comment defended "the positional all-false form must stay expressible" — now refused. Updated to state the form stays constructible so the test can prove it is refused.
+- rejected_findings:
+  - The matrix tests assert the same letter strings that passed before the fix and so cannot detect a reversion of the *semantic*; "only those modes' overrides change" is verified only by a manual live check not recorded in the diff. Rejected: the spec's own Design Notes acknowledge that only a live write can distinguish "targets" from "arms" because the endpoint returns `200 OK` either way — the wire shape is identical by design. The machine-checkable semantic (empty target refused) IS tested and verified to fail against pre-fix code, and the live A/B for the one-mode case is already recorded in research §5.14 (step 5: `override=2&mode=A` moved `a-schedule-override` 0→2 alone).
+  - The default `override=-1` is untested and becomes newly load-bearing. Rejected: pre-existing `test_arming_defaults_to_the_unchanged_override` already asserts `override=-1` reaches the wire, and the server-tolerance question for `-1` is already tracked in `deferred-work.md` (story 1.6 entry) — not something this story re-opens.
+  - Validation precedence changed silently (empty-target before override), so `CaptureModes()` + a bad override reports the wrong error first. Rejected: both are pre-request `ValueError`s; the empty-target error is the more fundamental one (the whole write is meaningless), the precedence is deliberate and documented in the Raises section, and the spec does not mandate an order.
+  - `models.py` docstring cross-references the client method name, coupling the model to the client. Rejected after reword: the docstring now describes the refusal behavior ("the client refuses before any request") without naming the method.
 
 ## Design Notes
 
@@ -82,3 +110,23 @@ The reason this survived review is worth keeping: `mode_string` produced *correc
 
 **Manual checks (if no CLI):**
 - Against a live server with a `PERM_SCHED` account: apply an override to one mode, read `++systemInfo` back, and confirm exactly that mode's `*-schedule-override` changed. Restore and confirm zero fields differ.
+
+## Auto Run Result
+
+**Summary:** `async_set_camera_arming` now models `++ssSetSchedule` as it actually behaves — `mode` selects *which* capture modes a write applies to (the target), and `override` is the value applied to exactly those modes (live-verified, research §5.14). An all-false target raises `ValueError` before any request instead of sending `mode=` empty and getting `200 OK` having done nothing. Validation order: camera number → empty target → override. `schedule=` is still never sent (AD-7); `200 OK` is documented as accepted-not-applied. The broken "disarm all three" framing is corrected in `CaptureModes`, `mode_string`, the `const.py` mode comment, the README and the CHANGELOG (BREAKING entry). The `mode_string` property's letters are unchanged; only its documented meaning and the method's rejection changed.
+
+**Files changed:**
+- `aiosecurityspy/src/aiosecurityspy/client.py` — `async_set_camera_arming` rejects an empty target before any request; docstring reframed (mode = target, override = applied value, `200 OK` = accepted, disarm recipe, read-vs-write distinction).
+- `aiosecurityspy/src/aiosecurityspy/models.py` — `CaptureModes` class and `mode_string` docstrings corrected to the direction-dependent meaning (armed state when decoded, target selector in a write); empty string never means "disarm all three".
+- `aiosecurityspy/src/aiosecurityspy/const.py` — corrected the `mode=` comment carrying the same "empty disarms all three" framing.
+- `aiosecurityspy/tests/test_settings.py` — replaced the empty-but-present-mode test with `test_arming_rejects_an_empty_mode_set_before_any_request`; added the 3-row override-target matrix test (one mode / all three / clear) asserting the full params dict; added `test_arming_never_reads_back_after_an_ok_write`; updated the undocumented-override test to a non-empty mode set.
+- `aiosecurityspy/tests/test_client_transport.py` — replaced the real-transport empty-mode test with `test_real_arming_refuses_an_empty_mode_set_before_the_socket` (handler never invoked); added `test_real_arming_single_mode_survives_query_encoding` (one-letter `mode=A` reaches a real socket).
+- `aiosecurityspy/CHANGELOG.md` — BREAKING entry under `[Unreleased] → Changed`.
+- `aiosecurityspy/README.md` — corrected the "all-false disarms all three" comment.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — appended the version-bump deferral (matching the 1.13/1.15 precedent).
+
+**Review findings:** 6 low patches applied (read/write docstring direction fix; disarm recipe; round-trip warning; real-socket single-mode test; accepted-not-applied test renamed to what it pins; stale FBT003 comment). 4 rejected: matrix tests cannot distinguish the semantic (spec acknowledges only a live write can; the empty-target test catches the machine-checkable part and §5.14 already records the live A/B), the default `override=-1` is already tested and its server-tolerance already deferred (DW 1.6), the empty-target-before-override precedence is deliberate and both are pre-request ValueErrors, and the models↔client docstring coupling was removed by rewording rather than naming the method. Edge-case hunter returned no findings (deletion of the empty-mode wire emission is intentional, BREAKING-noted, and live-verified a no-op).
+
+**Verification:** `uv run pytest` — 933 passed (baseline 928; removed 2 obsolete tests, added 7). `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy --strict src tests` — all clean. OpenAPI validator — valid. Repository root `uv run pytest` — 54 passed. Both empty-target regression tests verified to fail against the pre-fix code (guard removed by mutation). The new single-mode transport test passes against the fix.
+
+**Residual risks:** The version bump / manifest pin for this breaking pre-1.0 behavioral change is deferred to the first-release pass (documented in `deferred-work.md`). The method name still reads as "arming" while expressing target+override writes — kept by design (spec); a later release may rename it. `followup_review_recommended: true` because this is a public behavior change.
