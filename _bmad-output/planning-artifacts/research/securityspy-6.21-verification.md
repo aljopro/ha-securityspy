@@ -471,23 +471,26 @@ The Living Room camera (number 7) was unplugged deliberately. Both error surface
 - Code **64 = "Host is down"** is the first real error code seen. It is one value from an
   unknown space; do not enumerate error codes on this evidence.
 
-**The permissions mask carries camera state.** Reading `camera-list[].permissions` under two
-accounts, with camera 7 disconnected:
+**Permission bits, A/B'd across three permission types** on one account (camera 7 unplugged
+throughout):
 
-| account | connected cameras | camera 7 |
-|---|---|---|
-| ordinary probe | `839` (bits 0,1,2,6,8,9) | `327` (bits 0,1,2,6,8) |
-| Live-only | `513` (bits 0,9) | `1` (bit 0) |
+| permission type | connected cameras | camera 7 | bits |
+|---|---|---|---|
+| Live | `513` | `1` | 0, 9 |
+| Live, Captures | `519` | `7` | 0, **1**, 2, 9 |
+| probe account (has Control) | `839` | `327` | 0, 1, 2, 6, 8, 9 |
 
-**Bit 9 (512) is absent on exactly the disconnected camera, under both accounts.** It tracks
-connectivity, not account rights — a field named `permissions` is publishing camera state.
-`decode_permissions` ignores unknown bits so nothing misbehaves, but no code may infer a
-granted right from a set bit in this mask.
-
-**Bit 1 (2) is permission-linked after all** — it vanishes under Live-only, contradicting the
-earlier "set on all 11 cameras", which was an artifact of reading through one account. It
-still moves in lockstep with `FILES`, `CAMCONTROL` and the unnamed bit 8; isolating it needs a
-"Live, Captures" account.
+- **Bit 1 (2) arrives with "Captures", paired with `PERM_FILES`.** Granting Captures to a
+  Live-only account sets bits 1 and 2 together and changes nothing else. Its meaning is still
+  unnamed in the web client — narrower than before, but not identified. Leave it unassigned.
+- **Bits 8 and 9 are already modelled**: `PERM_PTZSET` (bit 8, appears only with Control) and
+  `PERM_AUDIORCV` (bit 9). Bit 9 matches `has-audio` on all 11 cameras. It initially looked
+  like camera connectivity because the sole camera missing it is the unplugged one, which
+  reports `has-audio: false` and an empty `audio-format` while down.
+- **Unsettled:** whether a disconnected camera *loses* `PERM_AUDIORCV` from its mask, or
+  camera 7 simply has no audio. Re-reading after the camera is restored decides it, and the
+  answer matters: if the mask varies with camera state, no consumer may cache it as a static
+  property of the account.
 
 ## 6. Endpoints the client calls that §2.2 omits
 

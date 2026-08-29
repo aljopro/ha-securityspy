@@ -112,26 +112,35 @@ Settled facts:
 - Error code **64 = "Host is down"** is the first real code observed. The library does not
   enumerate codes and should not start: 64 is one value from an unknown space.
 
-### G7 — Permission bit 1 (value 2) 🟡 NARROWED, still unexplained
-The earlier claim that bit 1 is "set on all 11 cameras" was an artifact of reading it through
-a single account. Reading `camera-list[].permissions` under two accounts:
+### G7 — Permission bit 1 (value 2) 🟡 NARROWED — bits 8 and 9 resolved
+Read `camera-list[].permissions` under three permission types on the same account, with
+camera 7 unplugged throughout:
 
-| account | connected cameras | the disconnected camera |
-|---|---|---|
-| ordinary probe | `839` = bits 0,1,2,6,8,9 | `327` = bits 0,1,2,6,8 |
-| `aielevatedtest`, Live-only | `513` = bits 0,9 | `1` = bit 0 |
+| permission type | connected cameras | camera 7 (down) | bits set |
+|---|---|---|---|
+| Live | `513` | `1` | 0, 9 |
+| Live, Captures | `519` | `7` | 0, **1**, 2, 9 |
+| ordinary probe (has Control) | `839` | `327` | 0, 1, 2, 6, 8, 9 |
 
-- **Bit 1 is permission-linked**, not universal: it disappears entirely under Live-only. It
-  still cannot be isolated, because it moves together with `FILES` (2), `CAMCONTROL` (6) and
-  the equally unnamed bit 8. Separating them needs a **"Live, Captures"** account — one step
-  short of Control on the permission-type dropdown.
-- **Bit 9 (512) is not a permission at all.** It is absent on exactly the disconnected camera
-  and present on the other ten, *under both accounts* — so it tracks camera connectivity, not
-  account rights. A field named `permissions` is carrying camera state. `decode_permissions`
-  ignores unknown bits, so nothing misbehaves today, but no future code may treat a set bit in
-  this mask as evidence of a granted right.
+- **Bit 1 is granted by "Captures", together with `PERM_FILES`.** Adding Captures to a
+  Live-only account turns on bit 1 and bit 2 as a pair; nothing else changes. So bit 1 belongs
+  to the captured-files capability, not to live video or control. It is still unnamed in the
+  web client, so it stays **unassigned** — "arrives with Captures" is narrower than before but
+  is not a meaning.
+- **Bits 8 and 9 were never unknown.** They are `PERM_PTZSET` (256, bit 8) and `PERM_AUDIORCV`
+  (512, bit 9), both already in `const.py`. Bit 8 appears only with Control, consistent with
+  saving PTZ presets. **A correction to the entry previously recorded here:** bit 9 is a real
+  permission and not, as first written, camera connectivity riding in the mask. It reads as
+  connectivity-shaped only because the one camera missing it is the unplugged one, and a
+  disconnected camera reports `has-audio: false` with an empty `audio-format`. Across all 11
+  cameras bit 9 matches `has-audio` exactly.
+- **Open sub-question, cheap to settle:** whether camera 7 loses bit 9 because it has no audio
+  hardware or because a disconnected camera cannot report audio. Re-read `++systemInfo` once
+  Living Room is plugged back in — if bit 9 returns, the mask varies with camera *state* and
+  not only with account rights, which would matter to any consumer caching it.
 
-**Action:** still do not assign bit 1 a meaning. Do not model bit 9 as a permission.
+**Action:** do not assign bit 1 a meaning. Bits 8 and 9 need no action — they are already
+modelled correctly.
 
 ## Open defects found, and their status
 
