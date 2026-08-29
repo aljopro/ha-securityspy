@@ -622,6 +622,10 @@ From `js/script.js` — decodes the per-camera `permissions` field:
 
 Observed `10207` = `LIVEVIDEO + FILES + FILEDEL + CAMCONTROL + SCHED + AUDIORCV + TRIGGER + AUDIOSND`.
 
+> ⚠️ **That sum is 3789, not 10207.** See `securityspy-6.21-verification.md` §5.8: 10207 is
+> `1+2+4+8+16+64+128+256+512+1024+8192`, which balances only with the three bits this table
+> omits (2, 16, 8192).
+
 **Integration consequence:** pre-flight capability per camera and **skip creating entities the user is not permitted to use**, rather than creating permanently-unavailable ones. Raise a precise repair issue when permissions are insufficient for a requested feature.
 
 ---

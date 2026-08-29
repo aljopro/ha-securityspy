@@ -332,6 +332,66 @@ Note the structure is already right: `StreamEvent.timestamp` is timezone-aware a
 to UTC, and `raw_timestamp` preserves the original string. Nothing is lost; only the assumed
 offset is wrong.
 
+## 5.8 Settings pages, verified with an elevated account (G3, G4, G5)
+
+A temporary account (`aielevatedtest`) with the settings permission was created for this pass
+and removed afterwards. It closed the largest block of unverified guesses in the reference doc.
+
+### Bit 4 (value 16) confirmed as "Set camera settings" ⭐
+
+A clean A/B: the probe account's per-camera `permissions` is `839` and every `++settings-*`
+returns `403`; the elevated account's is `10207`/`12255` and every one returns `200`. The bits
+it gained are `9368` = file_delete + **set_camera_settings (16)** + schedule + trigger +
+push_streams. Story 1.11's central premise is now live-verified rather than read from the
+account editor's checkbox ids.
+
+**The reference doc's own worked example is arithmetically wrong.** §9 states *"Observed 10207
+= LIVEVIDEO + FILES + FILEDEL + CAMCONTROL + SCHED + AUDIORCV + TRIGGER + AUDIOSND"* — that
+sums to **3789**, not 10207. The real decomposition is
+`1+2+4+8+16+64+128+256+512+1024+8192`, which balances **only** if the three undocumented bits
+(2, 16, 8192) are included. The doc's own evidence contradicts its own table.
+
+### `++settings-cameras` read
+
+**129 keys**, not the documented "~120": 48 booleans, 62 ints, 19 strings. `username` and
+`password` are both present in plaintext, so §8.3 holds on 6.21.
+
+`enabled` **is** present in the JSON read, as a JSON `bool` (`True`) — while it must be
+*written* as `1`/`0`. That is the read/write asymmetry §8.0 rule 3 describes, now confirmed
+for this specific key.
+
+**Library check.** Of the 23 wire keys `CameraSettings` maps, 22 are present with matching
+types and 23 of its 24 fields decode from a live page. Credentials are correctly dropped at
+decode — neither value reaches the model. The one exception: **`presenceRect` does not exist**
+on any of the 11 cameras, so `CameraSettings.presence_rect` is permanently `None`. Every
+camera on this server reports `custom-model: False`, and §8.2 ties `presenceRect` to presence
+detection and custom CoreML models, so whether it appears once a custom model is assigned is
+**untested**. `motionMask` and `privacyMask` are both present as documented.
+
+### The enable write, performed live (G4)
+
+Toggled `enabled` off and back on for camera 5 (Music Room) with the owner's authorisation:
+
+```
+POST /++settings-cameras
+formData&cameraNum=5&enabled=0
+-> 200 {"camUpdate":{"num":"5","name":"Music Room"}}
+```
+
+- `++camStatus` flipped to `enabled: false`, then back to `true` on restore.
+- The acknowledgement shape matches research §8.0's documented `{"camUpdate": {...}}`.
+- **Partial-write safety, measured across all 129 keys: exactly one changed — `enabled`.**
+  After restoring, **zero** of the 129 differ from the original snapshot. §8.0's "partial
+  writes are safe — verified" holds on 6.21, and story 1.10's mechanism is confirmed end to
+  end rather than read from client source.
+
+### `++settings-sched` (G2 still open)
+
+Shape matches §8.2b exactly: `{schedules: [], presets: [], sunriseOffset1/2, sunsetOffset1/2}`.
+Both arrays are **empty**, as on the reference server, so the elevated account did **not**
+close G2 — the shape of a *user-defined* schedule remains unverified and still needs someone
+to create one.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,

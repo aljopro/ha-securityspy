@@ -36,33 +36,26 @@ user-defined case is untested and the id a new schedule receives is unknown.
 **Risk:** very low, fully reversible.
 **Action:** create a schedule → re-read `++systemInfo` → confirm the id and shape → delete it.
 
-### G3 — No admin-privileged read 🔴
-**Blocks:** the largest remaining block of unverified guesses. The probe account lacks bit 4
-("Set camera settings"), so every `++settings-*` returns 403. Cannot confirm `enabled` in the
-`++settings-cameras` JSON read; cannot validate research §8.1's ~120 keys against reality;
-cannot read `++settings-sched` for the user-defined schedule object shape; cannot see the
-`settings-web` accounts structure.
-**Access needed:** an account granted bit 4, ideally created for this and deleted afterward.
-**Risk:** moderate — such an account can also *write*. Prefer a temporary account over
-promoting the existing probe user, so the least-privileged probe stays least-privileged.
-**Action:** with access, re-verify §8.1 wholesale; that section has never been checked.
+### G3 — Admin-privileged read ✅ CLOSED 2026-08-29
+A temporary `aielevatedtest` account with the settings permission closed this. Confirmed:
+`++settings-cameras` has **129** keys (not "~120"), `enabled` is present and reads as a JSON
+bool, `username`/`password` are plaintext as §8.3 warns, and `CameraSettings` decodes 23 of 24
+fields from a live page with no credential leakage. **Bit 4 (16) = "Set camera settings" is
+now live-verified** by A/B against the probe account, which also exposed an arithmetic error in
+the reference doc's own §9 example. One residue: `presenceRect` exists on **no** camera, so
+`CameraSettings.presence_rect` is always `None` — see defect 6.
 
-### G4 — No write has ever been performed 🟡
-**Blocks:** story 1.10's enable write is read from shipped client source, not round-trip
-verified. Also unverified on 6.21: that partial writes are genuinely non-destructive, and the
-acknowledgement shape (`{"camUpdate": …}` vs `{"reload": true}`).
-**Access needed:** explicit go-ahead, plus a camera Jensen names as safe.
-**Risk:** real — a write to a live security system. Must be a deliberate, named, reversible
-toggle (`enabled` on, then off), never a batch.
-**Action:** toggle `enabled` on the named camera, confirm via `++camStatus`, confirm no other
-settings key changed, toggle back.
+### G4 — The enable write ✅ CLOSED 2026-08-29
+Performed live on camera 5 (Music Room) with the owner's authorisation.
+`formData&cameraNum=5&enabled=0` returned `200 {"camUpdate":{...}}`, `++camStatus` flipped, and
+the restore returned it exactly. **Partial-write safety measured across all 129 keys: exactly
+one changed.** After restore, zero differ from the original. Story 1.10's mechanism is
+confirmed end to end.
 
-### G5 — No camera-scoped 403 observed 🟡
-**Blocks:** story 1.11's matrix row "the error carries that camera number". Only
-server-scoped 403s on settings endpoints were produced.
-**Access needed:** an account with live-video but *without* `PERM_FILES`, then a capture
-fetch. Requires G3.
-**Risk:** low once G3 exists.
+### G5 — No camera-scoped 403 🟡 STILL OPEN
+Unchanged. Producing one needs an account with live-video but *without* `PERM_FILES`, then a
+capture fetch. The elevated account has more permissions, not fewer, so it could not produce
+this. Story 1.11's matrix row for "the error carries that camera number" remains unverified.
 
 ### G6 — No camera in an error state 🟢
 **Blocks:** confirming `CameraStatus.error`'s type. All 11 cameras report `err: 0` (an
@@ -86,6 +79,7 @@ Treat as reserved.
 | 3 | `Capture.file_size` reads a float-MB field with `_as_int`, losing 99.92% of values and implying bytes | **none yet** | ⬅ **needs a story — decision pending** |
 | 4 | Research doc corrections (permissions, trigger keys, `systemInfo` shape, override count, `caplist` fields) | n/a | Annotated inline in the reference doc |
 | 5 | Server timezone published as `seconds-from-gmt` but ignored; every event and capture timestamp is off by the server's UTC offset | 1.13 | Specced, `ready-for-dev` |
+| 6 | `CameraSettings.presence_rect` reads `presenceRect`, absent on all 11 cameras, so it is permanently `None` | none yet | Low priority; may be custom-model-conditional and untested |
 
 ## Keeping the OpenAPI description honest
 
