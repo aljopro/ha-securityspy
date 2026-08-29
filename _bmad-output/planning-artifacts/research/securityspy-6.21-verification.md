@@ -297,8 +297,19 @@ None of the four is decoded anywhere in the library, and the integration never p
 wrong**, and wrong by whatever the offset happens to be for any other install.
 
 The same `server_timezone` parameter feeds `Capture.start` (`client.py:600`,
-`models.py:257`), so capture history is shifted identically. That propagates into the
-Observation Record — "last human seen" — which is the integration's headline feature.
+`models.py:257`), so capture history is shifted identically.
+
+**Scope of the damage, checked rather than assumed.** `datetime.now()`, `utcnow` and
+`time.time()` appear **nowhere** in the library or the integration: the reducer's
+`deadline()` measures from an event's own timestamp plus a gap, so every comparison is
+event-time against event-time. The skew is therefore *internally consistent* — episode
+open/close, debounce runs, inactivity gaps and capture ordering all still behave correctly.
+
+What breaks is absolute correctness, wherever a value meets a real clock. Home Assistant is
+that clock: a `device_class: timestamp` sensor renders relatively, so "last human seen" would
+read *"5 hours ago"* for someone who just walked past. The fix is confined to the decode
+boundary — no reducer or coordinator logic needs to change — but until it lands the
+Observation Record's displayed values are wrong by the server's offset.
 
 ## 6. Endpoints the client calls that §2.2 omits
 
