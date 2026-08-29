@@ -92,18 +92,46 @@ Story 1.11's matrix row for "the error carries that camera number" is therefore 
 verifiable as written** — that row describes a response shape this server does not produce.
 See defect 7.
 
-### G6 — No camera in an error state 🟢
-**Blocks:** confirming `CameraStatus.error`'s type. All 11 cameras report `err: 0` (an
-**int**) and `errDesc: ""`, while the field is typed `str | None`. What a real error value
-looks like is unknown.
-**Access needed:** a camera briefly disconnected.
-**Risk:** low but disruptive to a live system. Lowest priority; take it opportunistically if
-a camera ever errors on its own.
+### G6 — No camera in an error state ✅ CLOSED 2026-08-29
+Jensen unplugged the Living Room camera (number 7). Both error surfaces populated, and
+**both decode correctly — no defect**:
 
-### G7 — Permission bit 1 (value 2) is unexplained ⚪
-Set on all 11 cameras; named nowhere in the web client, the account editor, or the binary.
-**Access needed:** likely a vendor answer. **Action:** none — do not assign it a meaning.
-Treat as reserved.
+| surface | wire | decoded |
+|---|---|---|
+| `++camStatus` | `{"num":7,"enabled":true,"online":false,"open":false,"err":64,"errDesc":"Host is down"}` | `error='64'`, `error_description='Host is down'`, `online=False`, `open=False` |
+| `++systemInfo` | `last-error: 64` (int), `last-error-description: "Host is down"`, `connected: false` | `last_error='64'`, `last_error_description='Host is down'` |
+
+Settled facts:
+- **`err` is an `int` on the wire** (`64`), and `errDesc` carries the text. `CameraStatus.error`
+  is typed `str | None`, which looked like a mismatch — it is not. `_as_error_code` documents
+  carrying a non-zero code through "as the server's own string", and it does. The healthy
+  cameras still collapse `0` to `None` in the same response, so the sentinel logic is
+  exercised against a real mixed inventory for the first time.
+- **`enabled` stays `true` while the camera is down.** The three booleans are genuinely
+  independent, as the docstring claims: an unplugged camera is enabled, not online, not open.
+- Error code **64 = "Host is down"** is the first real code observed. The library does not
+  enumerate codes and should not start: 64 is one value from an unknown space.
+
+### G7 — Permission bit 1 (value 2) 🟡 NARROWED, still unexplained
+The earlier claim that bit 1 is "set on all 11 cameras" was an artifact of reading it through
+a single account. Reading `camera-list[].permissions` under two accounts:
+
+| account | connected cameras | the disconnected camera |
+|---|---|---|
+| ordinary probe | `839` = bits 0,1,2,6,8,9 | `327` = bits 0,1,2,6,8 |
+| `aielevatedtest`, Live-only | `513` = bits 0,9 | `1` = bit 0 |
+
+- **Bit 1 is permission-linked**, not universal: it disappears entirely under Live-only. It
+  still cannot be isolated, because it moves together with `FILES` (2), `CAMCONTROL` (6) and
+  the equally unnamed bit 8. Separating them needs a **"Live, Captures"** account — one step
+  short of Control on the permission-type dropdown.
+- **Bit 9 (512) is not a permission at all.** It is absent on exactly the disconnected camera
+  and present on the other ten, *under both accounts* — so it tracks camera connectivity, not
+  account rights. A field named `permissions` is carrying camera state. `decode_permissions`
+  ignores unknown bits, so nothing misbehaves today, but no future code may treat a set bit in
+  this mask as evidence of a granted right.
+
+**Action:** still do not assign bit 1 a meaning. Do not model bit 9 as a permission.
 
 ## Open defects found, and their status
 

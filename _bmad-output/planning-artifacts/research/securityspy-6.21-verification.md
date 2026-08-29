@@ -449,6 +449,46 @@ success with silent zero results, never an error. The library already rejects `d
 bounds in `async_get_captures` with a comment predicting exactly this; that prediction is now
 confirmed on a live server.
 
+## 5.10 A camera in an error state, and a non-permission bit (G6, G7) ⭐
+
+The Living Room camera (number 7) was unplugged deliberately. Both error surfaces agree:
+
+```jsonc
+// ++camStatus
+{"num":7,"enabled":true,"online":false,"open":false,"err":64,"errDesc":"Host is down"}
+// ++systemInfo camera-list entry
+"last-error": 64, "last-error-description": "Host is down", "connected": false
+```
+
+- **`err` / `last-error` is an `int` on the wire.** `CameraStatus.error` and
+  `Camera.last_error` are typed `str | None`, which reads like a mismatch but is deliberate:
+  `_as_error_code` collapses zero and carries any other value through as the server's own
+  string. Decoding the live response yields `error='64'`, `error_description='Host is down'`
+  for camera 7 and `None`/`None` for the healthy ten **in the same response** — the first time
+  the sentinel has been exercised against a mixed inventory. **No defect.**
+- **`enabled` remains `true` while the camera is down**, confirming the docstring's claim that
+  `enabled`, `online` and `open` are independent rather than nested.
+- Code **64 = "Host is down"** is the first real error code seen. It is one value from an
+  unknown space; do not enumerate error codes on this evidence.
+
+**The permissions mask carries camera state.** Reading `camera-list[].permissions` under two
+accounts, with camera 7 disconnected:
+
+| account | connected cameras | camera 7 |
+|---|---|---|
+| ordinary probe | `839` (bits 0,1,2,6,8,9) | `327` (bits 0,1,2,6,8) |
+| Live-only | `513` (bits 0,9) | `1` (bit 0) |
+
+**Bit 9 (512) is absent on exactly the disconnected camera, under both accounts.** It tracks
+connectivity, not account rights — a field named `permissions` is publishing camera state.
+`decode_permissions` ignores unknown bits so nothing misbehaves, but no code may infer a
+granted right from a set bit in this mask.
+
+**Bit 1 (2) is permission-linked after all** — it vanishes under Live-only, contradicting the
+earlier "set on all 11 cameras", which was an artifact of reading through one account. It
+still moves in lockstep with `FILES`, `CAMCONTROL` and the unnamed bit 8; isolating it needs a
+"Live, Captures" account.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
