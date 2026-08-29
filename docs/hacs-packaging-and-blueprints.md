@@ -2,7 +2,7 @@
 title: "HACS Packaging, Blueprints, and Release — Engineering Reference"
 status: living
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-29
 verified_against: "hacs.xyz and home-assistant.io, August 2026"
 ---
 
@@ -101,6 +101,28 @@ jobs:
 The scheduled run is not decoration: it is how you learn that an HA release broke the integration before a user does — directly serving the "still works in three years" bar.
 
 > **Quality-scale gap to close:** hassfest no longer checks `parallel-updates` (it moved to the Home Assistant **pylint plugin** in HA 2026.6). Add a pylint job using HA's plugin, or that Silver rule silently goes unverified.
+
+### Two test suites, two scopes — always run the library's scoped
+
+This repo has two `pyproject.toml` files with incompatible pytest configs, and running the wrong one against the wrong tests fails loudly and confusingly:
+
+| | Root (`ha-securityspy/pyproject.toml`) | Library (`aiosecurityspy/pyproject.toml`) |
+|---|---|---|
+| Tests | `tests/` (the integration) | `aiosecurityspy/tests/` (the library) |
+| `asyncio_mode` | `auto` | `strict` |
+| Why | `pytest-homeassistant-custom-component`'s fixtures are plain async functions with no explicit marker; `auto` is required for them to run at all | the library has no dependency on that plugin and marks its own coroutines explicitly |
+| Extra | — | `filterwarnings = ["error"]` — a deprecation warning fails the run rather than accumulating silently |
+
+Invoking plain `pytest` (or `pytest aiosecurityspy/tests`) from the repo root picks up the **root** config regardless of which tests you point it at. Pointed at the library's tests, that collides: `pytest-asyncio`'s strict-mode markers on the library's coroutines fight `pytest-homeassistant-custom-component`'s fixture setup, and all ~700 library tests error at setup — not fail, error, before the test body ever runs. This is a scoping problem, not a code problem; it reproduces identically on old and new library code.
+
+Always run the library's suite from inside `aiosecurityspy/`, so it picks up its own config:
+
+```bash
+uv run --directory aiosecurityspy pytest -q
+# or: cd aiosecurityspy && uv run pytest -q
+```
+
+This is exactly what `.bmad-loop/policy.toml`'s `[verify].commands` already do — the loop's automated gate has always been scoped correctly. The trap is only for a human or an ad hoc agent invocation from the repo root.
 
 ### Library release (PyPI trusted publishing)
 
