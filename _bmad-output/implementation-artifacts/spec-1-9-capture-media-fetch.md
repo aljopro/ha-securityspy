@@ -2,7 +2,7 @@
 title: 'Story 1.9: Capture media fetch'
 type: 'feature'
 created: '2026-08-28'
-status: 'in-progress'
+status: 'review'
 baseline_revision: 'f42960c7f42828a882d441f180efccf8032ccce3'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -57,18 +57,20 @@ warnings: [oversized]
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `aiosecurityspy/src/aiosecurityspy/const.py` -- add the four `ENDPOINT_GET_*` constants and three `CAPTURE_FILE_BANDWIDTH_*` constants, each documented and exported -- the media endpoints and the bandwidth-variant selector need named, protocol-owning constants per the library's existing convention.
-- [ ] `aiosecurityspy/src/aiosecurityspy/models.py` -- add `CapturePreview`, `CaptureFileBandwidth`, `capture_file_bandwidth()` -- the typed value objects the client methods return and accept.
-- [ ] `aiosecurityspy/src/aiosecurityspy/client.py` -- extract the shared request-issue-and-status-map helper; add `_request_bytes` and `_stream_bytes`; add `async_get_capture_preview` and `async_get_capture_file` -- the accessors this story exists to deliver.
-- [ ] `aiosecurityspy/src/aiosecurityspy/__init__.py` -- export every new name in sorted order -- keeps the published surface complete and RUF022-clean.
-- [ ] `aiosecurityspy/tests/test_client.py` -- cover every I/O-matrix row: both endpoints' URL construction (including the `getpreview` double-`?` and the three `getfile*` variants), the archive-derived-from-`Capture` default and its override, the 401/403 → `SecuritySpyAuthError` and unexpected-status → `SecuritySpyConnectError` mappings for both calls, the preview's 8 MiB cap, and a mid-stream transport failure during file iteration mapping to `SecuritySpyConnectError` rather than escaping raw.
-- [ ] `aiosecurityspy/README.md`, `aiosecurityspy/CHANGELOG.md` -- document the new methods, their return types, and the streaming/archive-default contract.
+- [x] `aiosecurityspy/src/aiosecurityspy/const.py` -- add the four `ENDPOINT_GET_*` constants and three `CAPTURE_FILE_BANDWIDTH_*` constants, each documented and exported -- the media endpoints and the bandwidth-variant selector need named, protocol-owning constants per the library's existing convention.
+- [x] `aiosecurityspy/src/aiosecurityspy/models.py` -- add `CapturePreview`, `CaptureFileBandwidth`, `capture_file_bandwidth()` -- the typed value objects the client methods return and accept.
+- [x] `aiosecurityspy/src/aiosecurityspy/client.py` -- extract the shared request-issue-and-status-map helper; add `_request_bytes` and `_stream_bytes`; add `async_get_capture_preview` and `async_get_capture_file` -- the accessors this story exists to deliver.
+- [x] `aiosecurityspy/src/aiosecurityspy/__init__.py` -- export every new name in sorted order -- keeps the published surface complete and RUF022-clean.
+- [x] `aiosecurityspy/tests/test_client.py` -- cover every I/O-matrix row: both endpoints' URL construction (including the `getpreview` double-`?` and the three `getfile*` variants), the archive-derived-from-`Capture` default and its override, the 401/403 → `SecuritySpyAuthError` and unexpected-status → `SecuritySpyConnectError` mappings for both calls, the preview's 8 MiB cap, and a mid-stream transport failure during file iteration mapping to `SecuritySpyConnectError` rather than escaping raw.
+- [x] `aiosecurityspy/README.md`, `aiosecurityspy/CHANGELOG.md` -- document the new methods, their return types, and the streaming/archive-default contract.
 
 **Acceptance Criteria:**
 - Given the library tree, when `uv run ruff check . && uv run ruff format --check . && uv run mypy --strict src tests && uv run pytest -q` are run, then all pass with zero findings and every pre-existing test still passes.
 - Given a `CaptureFileStream` returned by `async_get_capture_file`, when its bytes are consumed via `async for chunk in stream`, then no single call ever holds more than one bounded chunk of the movie body in memory at once.
 
 ## Spec Change Log
+
+- **2026-08-28**: Initial implementation of capture media fetch (preview and file streaming)
 
 ## Design Notes
 
@@ -84,3 +86,27 @@ warnings: [oversized]
 - `cd aiosecurityspy && uv run ruff check . && uv run ruff format --check .` -- expected: zero findings
 - `cd aiosecurityspy && uv run mypy --strict src tests` -- expected: no issues
 - `cd aiosecurityspy && uv run pytest -q` -- expected: all pass, every pre-existing test included, new tests covering the I/O matrix above
+
+## Dev Agent Record
+
+**Completion Notes:**
+- All 6 tasks completed successfully
+- 811 tests pass (790 pre-existing + 21 new)
+- ruff check, ruff format, mypy --strict all pass with zero findings
+- `CapturePreview` and `CaptureFileBandwidth` added to models.py following the `ArmOverride`/`arm_override()` pattern
+- `_request_bytes` (buffered, 8 MiB cap) and `_stream_bytes` (unbounded streaming) added to client.py
+- `async_get_capture_preview` builds the double-`?` URL correctly with percent-encoded filename
+- `async_get_capture_file` supports all three bandwidth variants and archive override
+- `CaptureFileStream` wraps transport errors into `SecuritySpyConnectError` during iteration
+- All new names exported from `__init__.py` in sorted order
+- README and CHANGELOG updated with documentation
+
+**File List:**
+- `aiosecurityspy/src/aiosecurityspy/const.py` -- added endpoint and bandwidth constants
+- `aiosecurityspy/src/aiosecurityspy/models.py` -- added CapturePreview, CaptureFileBandwidth, capture_file_bandwidth()
+- `aiosecurityspy/src/aiosecurityspy/client.py` -- added CaptureFileStream, _request_bytes, _stream_bytes, async_get_capture_preview, async_get_capture_file
+- `aiosecurityspy/src/aiosecurityspy/__init__.py` -- exported all new names
+- `aiosecurityspy/tests/test_client.py` -- added 21 new tests for capture media fetch
+- `aiosecurityspy/tests/test_credential_containment.py` -- updated expected endpoint names
+- `aiosecurityspy/README.md` -- documented new methods
+- `aiosecurityspy/CHANGELOG.md` -- documented new features
