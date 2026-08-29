@@ -350,6 +350,10 @@ From `js/script.js`:
 
 ### 5.2 `override` — 16 values
 
+> ⚠️ **See `securityspy-6.21-verification.md` §4.4.** The wire values are **0–14 (fifteen)**;
+> the `-1` "Unchanged" entry is a client-only sentinel.
+
+
 | id | Meaning | id | Meaning |
 |---|---|---|---|
 | −1 | Unchanged *(client sentinel)* | 7 | Disarmed For 3 Hours |
@@ -520,6 +524,12 @@ Posting only `formData&cameraNum=3&overlayText=…` left every other field untou
 
 ### 8.1 `settings-cameras?format=json` — ~120 flat keys
 
+> ⚠️ **Corrections in `securityspy-6.21-verification.md` §4.2 / §5.5.** `mcTriggerCamP`
+> does not exist (it is `mcTriggerCamP1` / `mcTriggerCamP2`); the Arrives/Departs trigger
+> family is missing; and this list covers only *named* fields, so it omits the 82 id-only
+> checkbox keys — including **`enabled`**, the camera enable/disable write.
+
+
 **AI trigger matrix — readable and writable:**
 
 ```
@@ -579,6 +589,13 @@ Both arrays were **empty** on the reference server, confirming the four schedule
 
 ## 9. Permissions bitmask ⭐
 
+> ⚠️ **Incomplete — see `securityspy-6.21-verification.md` §4.1.** Verified against the
+> 6.21 account editor: this table is missing **bit 4 (16) "Set camera settings"**,
+> **bit 12 (4096) "Hide download options"** (a *negative* permission) and
+> **bit 13 (8192) "Receive push streams"**. Bit 1 (value 2) is set on live cameras and is
+> named nowhere. The nine bits listed below are correct.
+
+
 From `js/script.js` — decodes the per-camera `permissions` field:
 
 | Constant | Bit | Value | Meaning |
@@ -600,6 +617,11 @@ Observed `10207` = `LIVEVIDEO + FILES + FILEDEL + CAMCONTROL + SCHED + AUDIORCV 
 ---
 
 ## 10. `systemInfo` — 69 per-camera fields
+
+> ⚠️ **See `securityspy-6.21-verification.md` §4.3.** On 6.21 the document has six
+> top-level keys (`camera-list`, `schedule-list`, `schedule-override-list`,
+> `schedule-preset-list`, `group-list`, `server`) and **72** per-camera fields.
+
 
 **Server block** (hub device + diagnostics):
 
