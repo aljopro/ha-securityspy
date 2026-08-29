@@ -202,6 +202,24 @@ only — which this library already does.
 Both lists are arrays of `{name: str, id: int}` — **not** an object keyed by id. The four
 `schedule-list` entries with ids 0–3 are the built-in defaults, confirming §8.2b.
 
+**Update 2026-08-29 (closes gap G2).** Jensen created one throwaway schedule and one
+throwaway preset, and the read was repeated:
+
+```jsonc
+"schedule-list":        [ …built-ins 0–3…, {"name": "Untitled Schedule", "id": 20189} ]
+"schedule-preset-list": [ {"name": "Untitled Preset", "id": 3186401225} ]
+```
+
+- A user-defined schedule uses **the same `{name, id}` shape** as a built-in, so
+  `_decode_schedules` handles it unchanged. `ServerInfo.from_api` on this live payload
+  returns all five schedules. Story 1.10's "and any the user defined" is now verified.
+- **Ids are neither small nor sequential**, and a preset's exceeded signed 32-bit range
+  (3186401225). Nothing may narrow a schedule or preset id to int32.
+- `schedule-preset-list` is genuinely populatable; the library models no presets.
+- **The XML form is not a mirror of the JSON form.** Without `format=json` the same read
+  returns an empty `<schedulepresetlist>` while the JSON carries the preset. Reason about
+  wire shape from the JSON form only — which is what the client requests.
+
 ### 5.5 The camera enable control (resolves the other story 1.10 unknown) ⭐
 
 `settings-cameras.html` carries `<input type="checkbox" id="enabled">` — **id only, no

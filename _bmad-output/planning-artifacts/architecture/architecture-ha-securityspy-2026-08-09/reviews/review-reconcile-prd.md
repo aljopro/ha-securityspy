@@ -22,7 +22,7 @@ The spine is substantially complete — all 45 FRs are at least mapped, the two-
 
 5. **§10.1 destructive/remote-execution endpoints "out of scope entirely" is not carried into the library contract.** AD-2 gives the library all protocol knowledge but nothing forbids `aiosecurityspy` (an independently usable package) from exposing capture deletion or shell/shortcut execution; the exclusion should bind the library surface, not just the integration.
 
-6. **§10.1 least-privileged SecuritySpy user documentation** (also §11.2) has no home — no AD, convention, or docs note requires it, and it is a Bronze/Silver docs deliverable.
+6. **§10.1 least-privileged SecuritySpy user documentation** (also §11.2) has no home — no AD, convention, or docs note requires it, xand it is a Bronze/Silver docs deliverable.
 
 7. **FR-13's transience disclosure did not land.** AD-7 correctly restricts writes to the Arm Override, but the PRD's testable consequence that the override's bounded lifetime (≤6 h or next scheduled event) must be reflected in control behavior and documentation — not implying an indefinite HA-set state — appears nowhere.
 

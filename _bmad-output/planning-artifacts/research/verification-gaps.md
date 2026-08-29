@@ -28,13 +28,27 @@ raw capture correctly — 5 of 5 records, 0 bytes left buffered.
 **Note for anyone repeating this:** curl buffers by default and yields an empty file on a
 low-traffic stream. Use `-N`.
 
-### G2 — No user-defined schedules exist 🟢
-**Blocks:** story 1.10's AC "including both the built-in defaults and any the user defined".
-`schedule-list` holds only built-ins 0–3 and `schedule-preset-list` is `[]`, so the
-user-defined case is untested and the id a new schedule receives is unknown.
-**Access needed:** Jensen creates one throwaway schedule in the SecuritySpy UI.
-**Risk:** very low, fully reversible.
-**Action:** create a schedule → re-read `++systemInfo` → confirm the id and shape → delete it.
+### G2 — No user-defined schedules exist ✅ CLOSED 2026-08-29
+Jensen created one throwaway schedule and one throwaway preset. Re-read of
+`++systemInfo?format=json` confirms story 1.10's user-defined case:
+
+- `schedule-list` gained `{"name": "Untitled Schedule", "id": 20189}` — **the same
+  `{name, id}` shape as the built-ins**, so `_decode_schedules` needs no change.
+  `ServerInfo.from_api` on the live payload returns all five schedules, ids 0–3 plus 20189.
+  Story 1.10's AC "including both the built-in defaults and any the user defined" is now
+  verified on a real server rather than assumed.
+- A user-defined id is **not** small and **not** sequential. The one issued was 20189, and
+  the preset's was **3186401225 — larger than a signed 32-bit int**. Python's unbounded `int`
+  and `_as_int` handle this, but nothing downstream may narrow a schedule or preset id to
+  int32, and no test may pin ids to a small range.
+- `schedule-preset-list` holds `[{"name": "Untitled Preset", "id": 3186401225}]`. **The
+  library decodes no presets at all** — `preset` appears nowhere in `models.py`. Not a defect
+  against any current story (1.10 is about schedule *names*), but the field is real, populated,
+  and unmodelled. See "Documentation follow-ups".
+- **XML/JSON divergence:** the same read without `format=json` returns
+  `<schedulepresetlist></schedulepresetlist>` — empty — while the JSON form carries the preset.
+  The client always sends `format=json`, so this does not affect it, but the XML form is not a
+  faithful mirror of the JSON one and must not be used to reason about wire shape.
 
 ### G3 — Admin-privileged read ✅ CLOSED 2026-08-29
 A temporary `aielevatedtest` account with the settings permission closed this. Confirmed:
@@ -100,3 +114,10 @@ marker. Two rules keep it worth trusting:
   eventually be either rewritten against 6.21 or retitled as a 6.20-era record.
 - `caplist` keys `i` and `z` remain unconfirmed. `z` does **not** track `m` as §4.1 claims
   (equal on 1,046 of 10,476 live entries); `i` is an int of unknown meaning.
+- **Schedule presets are unmodelled.** `schedule-preset-list` is a real, populatable
+  `{name, id}` array (G2) that the library ignores entirely. If any epic-6 story ("see which
+  schedule governs a camera", "arm and disarm each mode") ever needs to apply a preset, that
+  is an API change and lands in `aiosecurityspy` first per AD-19, along with an OpenAPI
+  schema for the field.
+- **Schedule and preset ids exceed int32.** Observed 3186401225 for a preset. Any future
+  decode, storage, or entity attribute must treat these as arbitrary-width ints.
