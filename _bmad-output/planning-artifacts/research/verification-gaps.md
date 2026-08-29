@@ -123,36 +123,43 @@ Settled facts:
 - Error code **64 = "Host is down"** is the first real code observed. The library does not
   enumerate codes and should not start: 64 is one value from an unknown space.
 
-### G7 — Permission bit 1 (value 2) ✅ CLOSED 2026-08-29 — as far as evidence allows
-Read `camera-list[].permissions` under three permission types on the same account, with
-camera 7 unplugged throughout:
+### G7 — Permission bit 1 (value 2) 🟡 REOPENED — bit 1 has no checkbox
+Superseded by direct evidence from the account editor. The **Per-camera custom permissions**
+panel offers exactly **ten** checkboxes, and a camera with all ten ticked (Peyton's Room) reads
+mask **`4063` = eleven bits** (0,1,2,3,4,6,7,8,9,10,11). Ten boxes, eleven bits.
 
-| permission type | connected cameras | camera 7 (down) | bits set |
-|---|---|---|---|
-| Live | `513` | `1` | 0, 9 |
-| Live, Captures | `519` | `7` | 0, **1**, 2, 9 |
-| ordinary probe (has Control) | `839` | `327` | 0, 1, 2, 6, 8, 9 |
+| checkbox | bit | constant |
+|---|---|---|
+| Get live video and images | 0 | `PERM_LIVEVIDEO` |
+| Get live audio | 9 | `PERM_AUDIORCV` |
+| Send live audio (two-way audio) | 11 | `PERM_AUDIOSND` |
+| Change schedules | 7 | `PERM_SCHED` |
+| Get captured footage | 2 | `PERM_FILES` |
+| Delete captured footage | 3 | `PERM_FILEDEL` |
+| Camera Control (PTZ) | 6 | `PERM_CAMCONTROL` |
+| Set PTZ preset positions | 8 | `PERM_PTZSET` |
+| Trigger motion detection | 10 | `PERM_TRIGGER` |
+| Set camera settings | 4 | `PERM_SETTINGS` |
 
-- **Bit 1 is granted by "Captures", together with `PERM_FILES`.** Adding Captures to a
-  Live-only account turns on bit 1 and bit 2 as a pair; nothing else changes. So bit 1 belongs
-  to the captured-files capability, not to live video or control. It is still unnamed in the
-  web client, so it stays **unassigned** — "arrives with Captures" is narrower than before but
-  is not a meaning.
-- **Bits 8 and 9 were never unknown.** They are `PERM_PTZSET` (256, bit 8) and `PERM_AUDIORCV`
-  (512, bit 9), both already in `const.py`. Bit 8 appears only with Control, consistent with
-  saving PTZ presets. **A correction to the entry previously recorded here:** bit 9 is a real
-  permission and not, as first written, camera connectivity riding in the mask. It reads as
-  connectivity-shaped only because the one camera missing it is the unplugged one, and a
-  disconnected camera reports `has-audio: false` with an empty `audio-format`. Across all 11
-  cameras bit 9 matches `has-audio` exactly.
-- **Sub-question settled: the mask varies with camera connection state.** A stored Living Room
-  recording carries a `pcm_alaw` audio track, and its settings page matches a working camera's
-  on every audio field — so the camera has a microphone and loses bits 9 and 11 only because it
-  is unplugged. `camera-list[].permissions` is not static: **no consumer may cache it, and an
-  absent bit is not evidence of a withheld right when the camera may be offline.** See §5.11.
+The mapping is confirmed independently by the same reading: nine cameras at `1999` lack exactly
+bits 4 and 11, Ada's Room at `2015` adds bit 4, Peyton's Room at `4063` adds bit 11 — matching
+the two boxes those cameras differ by. Every named constant in `const.py` is now tied to a
+label the product itself uses.
 
-**Action:** do not assign bit 1 a meaning. Bits 8 and 9 need no action — they are already
-modelled correctly.
+**Bit 1 is the leftover: it is set, and no checkbox controls it.** It is therefore *derived*,
+not granted. The correlation on record is with `PERM_FILES` — Live-only produced bits 0,9 with
+no bit 1, and adding Captures produced bits 0,**1**,2,9 — so the leading hypothesis is that the
+server sets bit 1 whenever captured-footage access is granted. Plausibly a companion right such
+as download-permitted, the grant-shaped counterpart to the deny-shaped `PERM_NODOWNLOAD`
+(bit 12). **Hypothesis only — do not name the bit on this.**
+
+**The test that would settle it** (one camera, two readings):
+1. Tick **only** "Get captured footage" on one camera → if the mask is `6` (bits 1+2), bit 1 is
+   bound to `PERM_FILES`. If it is `4`, bit 1 comes from somewhere else entirely.
+2. Untick "Get captured footage" while leaving others ticked → bit 1 should vanish.
+
+**Action until then:** leave bit 1 unnamed and out of `PERMISSION_NAMES`. `decode_permissions`
+ignores unknown bits, so nothing misbehaves. Do not let a consumer infer a right from it.
 
 ### G8 — Do per-camera permissions hide a camera from one endpoint but not the other? 🟡 OPEN
 **Blocks:** whether the inventory needs a *fallback* between `++camStatus` and `++systemInfo`,
