@@ -214,3 +214,12 @@ marker. Two rules keep it worth trusting:
 - **`ssSetPreset?id={presetId}` is unmodelled.** Found in the shipped client beside
   `ssSetSchedule` (§5.14); it applies a schedule preset (§5.4). Not tested, not in the library,
   not in the OpenAPI description. Relevant to epic 6 if presets are ever surfaced.
+- **Unmodelled endpoints found in the browser capture** (§5.15, §5.17), none of them defects,
+  all of them relevant to later epics: `ptzcommand`, `clip`, `cliplist`, `dashImage`,
+  `setTags`, `delete`, `deviceList`, `hls`, `++image`, `++video`, `++audio`, `ssSetPreset`,
+  and the `/video` WebSocket with its binary opcodes. Anything the integration needs from
+  these lands in `aiosecurityspy` first, per AD-19.
+- **`anonymize()` covers neither `wan-address` nor `deviceList`.** Both publish internal
+  network layout (a personal `*.viewcam.me` hostname; camera LAN IPs and ONVIF UUIDs). Neither
+  is a credential, so story 1.7 holds as written — but a diagnostics dump attached to a public
+  issue would carry them. One decision, covering both (§5.11, §5.17.2).

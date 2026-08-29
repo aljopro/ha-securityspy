@@ -879,6 +879,69 @@ getpreview?/{path}?aiTypeHuman={..}&aiTypeVehicle={..}&aiTypeAnimal={..}&auth={.
 So the thumbnail endpoint accepts per-class flags the project has never sent and does not
 model — plausibly controlling detection overlays on the returned image. Untested.
 
+## 5.17 The rest of the HAR: tagging, deletion, device discovery ⭐⭐
+
+A residual sweep of the capture — the endpoints not covered in §5.15.
+
+### 5.17.1 A `200` can carry a failure
+
+| request | body | response |
+|---|---|---|
+| `POST /setTags?tagId=3` | `setTag=4%2F2026-08-29%2F…Back%20Yard.mov%3Farchive%3D0` | `200`, body **`OK`** |
+| `POST /delete?v6=1` | `delete=4%2F2026-08-29%2F…C%20Back%20Yard.mov%3Farchive%3D0` | `200`, body **`NO`** |
+
+The delete was **refused**, and the only signal is the two-byte body. Both endpoints take the
+capture as a URL-encoded `{camera}/{folderDate}/{filename}?archive={0|1}` triple in the POST
+body — the same triple the media endpoints take in the path.
+
+**`aiosecurityspy` discards the body of every write.** `async_set_camera_arming` calls
+`_request_text` and drops the returned string, so a `NO` would read as success. It is not a
+live defect today — `++ssSetSchedule` answers `OK` even to nonsense (below) — but the body is
+the only failure channel these endpoints have, and any future write must read it.
+
+**`++ssSetSchedule` validates almost nothing.** With a privileged account:
+
+| request | result |
+|---|---|
+| `cameraNum=99` (no such camera) | `404 The specified camera…` |
+| `mode=Z` (not a mode letter) | **`200 OK`** |
+| `override=999` (undefined) | **`200 OK`** |
+
+Only the camera number is checked. This reinforces §5.14: `OK` means "request accepted", never
+"anything was applied", and the library's own `arm_override` validation is the *only* thing
+stopping an undefined override reaching the wire.
+
+### 5.17.2 `deviceList` — ONVIF discovery
+
+`GET /deviceList` → `200 application/json`:
+
+```jsonc
+{"onvif":[{"name":"C210","id":"uuid:3fa1fe68-…","ip":"192.168.0.20","used":true}, …]}
+```
+
+Discovered devices with model name, ONVIF UUID, **LAN IP**, and whether SecuritySpy already
+uses each. Unmodelled. Potentially useful to a config flow, but it publishes the internal
+network layout, so it must never be included in a diagnostics dump unredacted — the same
+concern as `wan-address` (§5.11), and `anonymize()` covers neither.
+
+### 5.17.3 Continuous captures have no time in the filename
+
+One preview request was for `08-29-2026 C Back Yard.mov` — no clock time, where every motion
+capture reads `08-29-2026 2-13-02 PM M Back Yard.mov`. The `C`/`M` letter is the capture type.
+`_parse_capture_start` reconstructs the start from the folder date plus the `s` seconds field
+rather than from the filename, so this is not a defect — but any future filename parsing must
+not assume a time is present.
+
+### 5.17.4 Small confirmations
+
+- `caplist` was seen with `filter=0` and `filter=2`, both against `cams=4,` — the trailing
+  comma is real in the client's own traffic, as §4 records.
+- `/clip` was only ever called with `movieType=1`; other values remain unknown.
+- **`++settings-cameras` returns `text/html` without `format=json`** and
+  `application/json` with it (129 keys, confirming §5.8). The library sends `format=json`, so
+  it is correct — but the OpenAPI description should state that the parameter is required, since
+  the bare path returns an 85 KB HTML form.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
