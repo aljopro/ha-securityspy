@@ -85,7 +85,7 @@ Treat as reserved.
 | 2 | `systemInfo` camera inventory decodes to zero against a real server | 1.12 | Specced, `ready-for-dev` |
 | 3 | `Capture.file_size` reads a float-MB field with `_as_int`, losing 99.92% of values and implying bytes | **none yet** | ⬅ **needs a story — decision pending** |
 | 4 | Research doc corrections (permissions, trigger keys, `systemInfo` shape, override count, `caplist` fields) | n/a | Annotated inline in the reference doc |
-| 5 | Server timezone published as `seconds-from-gmt` but ignored; every event and capture timestamp is off by the server's UTC offset | 1.13 | Story created |
+| 5 | Server timezone published as `seconds-from-gmt` but ignored; every event and capture timestamp is off by the server's UTC offset | 1.13 | Specced, `ready-for-dev` |
 
 ## Keeping the OpenAPI description honest
 

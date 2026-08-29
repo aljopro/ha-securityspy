@@ -1,5 +1,5 @@
 # generated: 2026-08-09T22:17:18-05:00
-# last_updated: 2026-08-29T05:50:47-05:00
+# last_updated: 2026-08-29T06:39:42-05:00
 # project: ha-securityspy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -61,7 +61,7 @@ development_status:
   1-10-schedule-names-and-camera-enable-write: ready-for-dev
   1-11-permission-denied-is-not-an-authentication-failure: ready-for-dev
   1-12-decode-the-camera-inventory-a-real-server-sends: ready-for-dev
-  1-13-timestamps-use-the-servers-own-timezone: backlog
+  1-13-timestamps-use-the-servers-own-timezone: ready-for-dev
   epic-1-retrospective: optional
   epic-2: backlog
   2-1-add-a-securityspy-server-through-the-ui: done
