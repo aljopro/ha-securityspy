@@ -829,6 +829,32 @@ only HMAC strings in the binary are OpenSSL's generic algorithm table, not evide
 token's construction. Jensen confirms she does not know how they are generated either.
 Treating them as **server-minted and human-copied** is the safe reading.
 
+### There are TWO `auth=` forms, and only one is safe ⚠
+
+SecuritySpy's own documentation describes `auth=` as "the Base64-encoded version of the string
+`username:password`". That is a **second, distinct** form from the URL Generator's token, and
+both are accepted. Verified live, with no `Authorization` header sent:
+
+| `auth=` value | `++image` | `++systemInfo` | `++caplist` | `video` | scope |
+|---|---|---|---|---|---|
+| `base64("user:pass")` | `200` | `200` | `200` | `200` | **the whole account** |
+| `base64("user:wrong")` | `401` | `401` | — | — | rejected |
+| `!{8 hex}{40 hex}` (generator) | `401` | `401` | — | `200` for its own camera only | **one endpoint, one camera** |
+
+The leading **`!`** is the discriminator. Without it the value is parsed as base64 credentials;
+with it, as a scoped token.
+
+**The documented form is credentials-in-a-URL.** Base64 is an encoding, not encryption — a
+`auth=` query parameter carrying it is the account's username and password in plaintext for
+anyone who can read a server log, a proxy log, a browser history, or a Home Assistant frontend
+URL. It also grants **everything the account can do**, not just the stream it was pasted into.
+
+**Rule for this project: the library and the integration must never construct the base64
+form.** `aiosecurityspy` authenticates with an `Authorization` header, which keeps credentials
+out of the request line, and `const.py` already flags `++ssSetSchedule` as an exposure precisely
+because it is a GET. The `!`-prefixed token is the only acceptable URL-embedded credential, and
+its whole value is that it is *not* the account.
+
 **Consequence for story 2.6 — three options, and the token is not automatically the winner:**
 
 1. **User pastes a token per camera.** Most faithful to AD-13, but manual, and it does not
