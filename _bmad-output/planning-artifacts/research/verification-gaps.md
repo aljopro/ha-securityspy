@@ -165,15 +165,21 @@ endpoints also answered `200` to a Live-only account, so neither is gated at the
 level. On this evidence **no fallback is justified**: `++camStatus` is the inventory and
 `++systemInfo` supplies detail, not membership.
 
-**What is not tested.** The dropdown offers two more types that were never exercised:
+**Both endpoints compared directly under a restricted account.** The ordinary probe account
+(mask `839` — no `SETTINGS`, `SCHED`, `FILEDEL`, `TRIGGER` or `AUDIOSND`) returns the **same 11
+cameras from both surfaces**, with `server.camera-count` agreeing. So a restricted account is
+not filtered on either endpoint, and the two do not disagree.
+
+**What is not tested.** The account editor offers two types that were never exercised:
 **"Per-camera custom permissions"** and **"Per-group custom permissions"**. Those are the only
 plausible way a camera could be hidden from one surface and not the other — an account granted
-three of eleven cameras might well see a shorter `camera-list`. `++camStatus` was also never
-captured under *any* restricted account, so its filtering behaviour is unknown even for the
-types that were tested.
+three of eleven cameras might well see a shorter `camera-list`. Account-level *strength* is now
+ruled out as a cause; account-level *scoping* is what remains.
 
-**Access needed:** one temporary account set to per-camera permissions covering a subset of
-cameras; read both endpoints and compare the camera sets.
+**Access needed:** one account set to **per-camera** permissions covering a subset of cameras.
+Read both endpoints as that account and compare the camera sets. Note this needs a permission
+*shape* no existing account has — `aitest` cannot answer it however restricted it is, because
+its restriction is in strength, not scope.
 **Risk:** very low, fully reversible.
 **Why it matters:** if the two disagree under per-camera permissions, a single-source inventory
 either over-reports cameras the user may not see or under-reports ones they may. Decide before

@@ -119,7 +119,8 @@ failure story 3.1 exists to prevent.
 account-level permission types — Live, Live+Captures, Administrator and the ordinary probe —
 `++systemInfo` returned all 11 cameras every time. Permission is expressed *inside*
 `camera-list[].permissions`, never by omitting a camera, and both endpoints answer `200` to a
-Live-only account. So `++camStatus` is the membership list and `++systemInfo` is detail; there
+Live-only account. Compared head-to-head under the restricted probe account, `++camStatus` and
+`++systemInfo` report the **same 11 cameras**. So `++camStatus` is the membership list and `++systemInfo` is detail; there
 is no case yet where one is visible and the other is not. **Untested: per-camera and per-group
 custom permissions** (gap G8) — the only plausible way a camera could be hidden from one
 surface and not the other. Settle G8 before story 2.3 commits to a single source.
