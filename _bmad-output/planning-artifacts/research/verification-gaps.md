@@ -226,4 +226,6 @@ marker. Two rules keep it worth trusting:
 - **`is_credential_key` misses SecuritySpy's `*Pass` fields.** `setPass`, `fsPass` and
   `quitPass` on `++settings-general` are real passwords and are not matched, while
   `videoPassthrough` is correctly *not* matched (§5.18.3). Latent today because the library
-  reads none of those pages. Cheap to fix and squarely within that function's purpose.
+  reads none of those pages. These are SecuritySpy's *application* passwords, and the risk is a
+  diagnostics dump attached to a public issue — not LAN traffic, which is plain HTTP to the
+  cameras regardless. Cheap to fix and squarely within that function's purpose.

@@ -956,11 +956,13 @@ including the camera's device `username` and `password` in cleartext. The browse
 read-modify-write on every save.
 
 This does **not** contradict §5.8's partial-write finding — that was verified directly, one
-field changing 1 of 129 keys — it means the two approaches both work and **the library's is the
-safer one**. A partial write never re-transmits the camera's device credentials; the browser's
-full-form write puts them on the wire on every settings save. Worth stating explicitly in
-`CameraSettingsPatch`, because "the client does it this way" would be a tempting argument for
-switching.
+field changing 1 of 129 keys — it means both approaches work, and the library should keep its
+partial write. The reason is **blast radius, not secrecy**: a full-form write re-sends all 129
+fields to change one, so a stale read or a single bad field rewrites the camera's entire
+configuration. Credentials on the wire are *not* the argument — these cameras speak plain HTTP
+on the LAN regardless, so anyone able to observe that traffic already has the device. Worth
+stating in `CameraSettingsPatch`, because "the shipped client does a full form" is otherwise a
+tempting reason to switch.
 
 ### 5.18.2 Body shapes are not uniform
 
@@ -987,10 +989,15 @@ match:
 | `videoPassthrough` | `-web` | ❌ `False` | ✅ correct — *not* a secret despite the name |
 
 The function is pleasingly not naive — it does not false-positive on `videoPassthrough` — but
-it misses SecuritySpy's `*Pass` convention. **Latent, not live:** the library reads none of
-these pages today, so nothing leaks now. It becomes real the moment any consumer puts a
-`settings-general` payload into a diagnostics dump. `is_credential_key` exists precisely to
-know this protocol's credential names, so it should know these three.
+it misses SecuritySpy's `*Pass` convention. Note these are the **SecuritySpy application's own**
+passwords (settings, full-screen exit, quit), not camera device credentials.
+
+**The risk here is egress, not the LAN.** On-network traffic is not the concern — the cameras
+are plain HTTP anyway. The concern is a Home Assistant **diagnostics dump**, which is
+deliberately exported and routinely attached to public issues. That is the one path where this
+data leaves the network on purpose, and it is the path `anonymize()` exists to guard.
+**Latent, not live:** the library reads none of these pages today. It becomes real the moment a
+consumer puts a `settings-general` payload into a dump.
 
 ### 5.18.4 Accounts: safe to read, credential-bearing to write
 
