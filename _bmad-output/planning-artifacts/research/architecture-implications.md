@@ -89,53 +89,55 @@ property of the account.
 
 ---
 
-## 5b. Disabled is a state, not an absence
+## 5b. Inventory: `++systemInfo` is the only permission-scoped surface
 
-**The evidence (§5.12).** Disabling a camera in SecuritySpy removes it from `++systemInfo`
-entirely — `camera-list` shrinks and `server.camera-count` drops to match — while `++camStatus`
-still reports it as `enabled:false, online:false, open:false, err:0`. An *unreachable* camera
-reads differently: `enabled:true, online:false, err:64 "Host is down"`.
+**Corrected 2026-08-29.** An earlier revision of this section named `++camStatus` the inventory
+of record. That was wrong, and the correction matters more than the original point.
 
-**The conclusion.** `++camStatus` is the **inventory of record**, because it is the only surface
-that distinguishes the three cases the user cares about:
+**The evidence (§5.12, G8).** The two endpoints differ in *two independent ways*:
 
-| user's situation | `++camStatus` | `++systemInfo` | what HA should say |
-|---|---|---|---|
-| camera working | `enabled:true, online:true` | present | normal state |
-| camera unplugged or faulted | `enabled:true, online:false, err≠0` | present | `unavailable` — genuinely unknown |
-| camera **disabled by the user** | `enabled:false, err:0` | **absent** | a deliberate off state, *not* `unavailable` |
+| camera is… | `++camStatus` | `++systemInfo` |
+|---|---|---|
+| working and permitted | `enabled:true, online:true` | present |
+| unplugged / faulted | `enabled:true, online:false, err≠0` | present |
+| **disabled** in SecuritySpy | `enabled:false, err:0` | **absent** |
+| **not permitted** to this account | `enabled:true, online:true` — full health | **absent** |
 
-Reporting a disabled camera as `unavailable` is misleading: `unavailable` means "cannot reach,
-do not know", and a switched-off camera is a known, intentional state that the user chose. It
-reads as a fault the user then goes looking for. Keep the device and its entities, and surface
-"disabled" distinctly — `enabled` is exactly the signal needed, and story 1.10 already
-implements the write that flips it, so the state is actionable and not merely informational.
+`++camStatus` returned **all 11 cameras with complete health** to an account permitted exactly
+one of them. It applies no permission filtering whatever.
 
-Building the inventory from `++systemInfo` instead makes a disabled camera's device and
-entities **disappear**, orphaning history and breaking automations that reference them — the
-failure story 3.1 exists to prevent.
+**The conclusion. `++systemInfo` is the inventory of record**, because it is the only surface
+that respects permissions. `++camStatus` stays the cheap health poll — 794 B against 26 KB —
+but its rows must be **intersected** with the `++systemInfo` set, never unioned. Building
+membership from `++camStatus` would create entities for cameras the user has no right to see,
+which is precisely what story 2.7 exists to prevent.
 
-**No fallback between the two endpoints is justified on current evidence.** Across four
-account-level permission types — Live, Live+Captures, Administrator and the ordinary probe —
-`++systemInfo` returned all 11 cameras every time. Permission is expressed *inside*
-`camera-list[].permissions`, never by omitting a camera, and both endpoints answer `200` to a
-Live-only account. Compared head-to-head under the restricted probe account, `++camStatus` and
-`++systemInfo` report the **same 11 cameras**. So `++camStatus` is the membership list and `++systemInfo` is detail; there
-is no case yet where one is visible and the other is not. **Untested: per-camera and per-group
-custom permissions** (gap G8) — the only plausible way a camera could be hidden from one
-surface and not the other. Settle G8 before story 2.3 commits to a single source.
+**Do not try to tell "disabled" from "not permitted".** Both are present in `++camStatus` and
+absent from `++systemInfo`. `enabled` distinguishes them *unless a camera is both*, and being
+wrong in that direction discloses a camera the user may not see. Decide membership from
+`++systemInfo` alone.
+
+**So handle disappearance by not deleting.** A camera that leaves `camera-list` — disabled,
+de-permissioned, or genuinely removed — should leave its Home Assistant device and entities in
+place and **unavailable**, not delete them. That is correct for every cause, leaks nothing, and
+preserves history and automation references. It is also what story 3.1 already asks for.
+Reserve actual removal for an explicit user action.
+
+**Disabled remains a state worth surfacing** where it is visible: for a camera the account
+*can* see, `enabled:false, err:0` is a deliberate off state, not a fault, and Home Assistant's
+`unavailable` ("cannot reach, do not know") tells the wrong story about it. Story 1.10 already
+implements the write that flips `enabled` back, so the state is actionable.
 
 **The practical wrinkle: a disabled camera has no name.** `++camStatus` carries only
-`num, enabled, online, open, err, errDesc` — the name lives in `++systemInfo`, which omits
-disabled cameras entirely. A camera disabled *before* the integration ever saw it therefore has
-a number and no label. Decide deliberately: skip it until first enabled, name it by number, or
-persist the last-known name in the config entry. The middle option is the trap — a device
-called "Camera 6" that silently renames itself later is worse than one that appears late.
+`num, enabled, online, open, err, errDesc`; the name lives in `++systemInfo`, which omits it.
+A camera disabled before the integration ever saw it has a number and no label. Skip it until
+first enabled, or persist the last-known name in the config entry — but never invent
+"Camera 6" and let it silently rename itself later.
 
 **`[ASSUMPTION]` — not verified.** A camera *deleted* from SecuritySpy is expected to vanish
-from `++camStatus` too, which would make "absent from `camStatus`" the discriminator between
-deleted and disabled. Testing it means deleting a real camera, which was not worth doing.
-Until it is verified, do not build removal logic that depends on it.
+from `++camStatus` too. Testing it means deleting a real camera, which was not worth doing.
+Do not build removal logic that depends on it — and per the rule above, removal logic should
+not be automatic anyway.
 
 Affects stories **2.3**, **2.7**, **3.1**, and **6.4**.
 

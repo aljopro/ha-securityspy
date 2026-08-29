@@ -591,8 +591,13 @@ direct consequences for the integration:
 rather than stale") exists to prevent, and it would silently orphan history and break
 automations.
 
-**`++camStatus` is therefore the inventory of record**, and the reason is stronger than "it has
-more rows": it is the only surface that says *why* a camera is not producing. `enabled:false`
+**⚠ Superseded — see G8.** A later test with an account permitted exactly one camera showed
+`++camStatus` returning **all 11 with full health**, while `++systemInfo` returned only the
+permitted one. `++camStatus` applies no permission filtering, so it must **not** be the
+inventory of record; `++systemInfo` is, being the only permission-scoped surface. The paragraph
+below stands only for what `++camStatus` says about cameras the account may already see.
+
+**`++camStatus` says *why* a camera is not producing**, which `++systemInfo` cannot. `enabled:false`
 with `err:0` is a deliberate administrative state; `enabled:true, online:false, err:64` is a
 fault. Home Assistant's `unavailable` means "cannot reach, do not know" — the right answer for
 the second case and a misleading one for the first, where it reads as a fault the user then

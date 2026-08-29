@@ -161,45 +161,47 @@ as download-permitted, the grant-shaped counterpart to the deny-shaped `PERM_NOD
 **Action until then:** leave bit 1 unnamed and out of `PERMISSION_NAMES`. `decode_permissions`
 ignores unknown bits, so nothing misbehaves. Do not let a consumer infer a right from it.
 
-### G8 — Do per-camera permissions hide a camera from one endpoint but not the other? 🟡 OPEN
-**Blocks:** whether the inventory needs a *fallback* between `++camStatus` and `++systemInfo`,
-or can read one of them alone (architecture-implications §5b).
+### G8 — Do per-camera permissions hide a camera from one endpoint? ✅ CLOSED 2026-08-29 — **yes, and it inverts the earlier conclusion**
+With the account granted **only Driveway** (camera 3, mask `1` — live video alone) and every
+box unticked on the other ten:
 
-**What is settled.** Across four account-level permission types — Live, Live+Captures,
-Administrator, and the ordinary probe — `++systemInfo` returned **all 11 cameras every time**.
-Permission is expressed inside `camera-list[].permissions`, never by omitting a camera. Both
-endpoints also answered `200` to a Live-only account, so neither is gated at the endpoint
-level. On this evidence **no fallback is justified**: `++camStatus` is the inventory and
-`++systemInfo` supplies detail, not membership.
+| endpoint | cameras returned |
+|---|---|
+| `++systemInfo` | **1** — Driveway only |
+| `++camStatus` | **11 — every camera**, `enabled:true, online:true, open:true, err:0` on all ten the account may not see |
 
-**Both endpoints compared directly under a restricted account.** The ordinary probe account
-(mask `839` — no `SETTINGS`, `SCHED`, `FILEDEL`, `TRIGGER` or `AUDIOSND`) returns the **same 11
-cameras from both surfaces**, with `server.camera-count` agreeing. So a restricted account is
-not filtered on either endpoint, and the two do not disagree.
+**`++systemInfo` is permission-scoped. `++camStatus` is not scoped at all.** The earlier entry
+here concluded the opposite — that permission is expressed only inside the mask and never by
+omitting a camera, so `++camStatus` could serve as the inventory of record. That was based on
+account-level permission types and on per-camera configs where every camera still held *some*
+right. Both were true as far as they went and both were misleading: a camera with **zero**
+permissions is removed from `camera-list` entirely, and only that configuration reveals it.
 
-**Per-camera custom permissions tested — still no divergence.** With the account set to
-**Per-camera custom permissions** and the boxes varied *between* cameras (nine cameras at mask
-`1999`, Ada's Room `2015` adding `SETTINGS`, Peyton's Room `4063` adding `SETTINGS` and
-`AUDIOSND`), **both endpoints still report all 11 cameras** and the sets are identical. Varying
-permissions per camera changes only the mask, never membership — the same rule that holds for
-account-level types.
+**Consequences, in order of importance:**
 
-Two incidental confirmations from that reading: `PERM_AUDIOSND` was granted to Peyton's Room
-alone and appears on that camera alone, so the permission ∩ capability rule (§5.11) holds under
-per-camera scoping too; and `PERM_PUSH_STREAMS` (bit 13) is absent everywhere under this
-permission type though it was set under Administrator, so it is not a per-camera checkbox.
+1. **`++camStatus` must never be the membership list.** Using it would create Home Assistant
+   entities for cameras the account has no right to see, defeating story 2.7 outright. It
+   discloses the existence, count, numbering and live health of every camera on the server to
+   any authenticated account, however restricted. That is an information disclosure in the
+   product, not in this integration — but the integration must not amplify it.
+2. **`++systemInfo` is the inventory of record**, being the only permission-scoped surface.
+   `++camStatus` remains the cheap health poll, but its results must be **intersected** with
+   the `++systemInfo` set and never unioned with it.
+3. **A disabled camera and an unpermitted camera are nearly indistinguishable.** Both are
+   present in `++camStatus` and absent from `++systemInfo`. The one discriminator is
+   `enabled`: an unpermitted camera reads `enabled:true`, a disabled one `enabled:false`
+   (§5.12). It fails when a camera is *both*, and guessing wrong in that direction leaks. So
+   **do not** use it to decide entity creation — decide membership from `++systemInfo` alone,
+   and never create an entity for a camera absent from it.
+4. **This reopens the §5.12 disappearance problem rather than solving it.** Since membership
+   must come from the scoped endpoint, a camera that is disabled *or* de-permissioned vanishes
+   from it. The answer is not to widen membership but to stop deleting: keep known devices and
+   mark them unavailable rather than removing them, which is correct for both causes and leaks
+   neither.
 
-**What is still not tested.** No camera was left with **zero** permissions. That is the one
-configuration that could plausibly drop a camera from `camera-list` — a camera the account may
-not see *at all*, rather than one it sees with few rights. "Per-group custom permissions" is
-also unexercised, but it is the same mechanism applied to a group and unlikely to differ.
-
-**Access needed:** one camera with **every box unchecked**, then read both endpoints and
-compare the camera sets. Everything short of that is now ruled out.
-**Risk:** very low, fully reversible.
-**Why it matters:** if the two disagree under per-camera permissions, a single-source inventory
-either over-reports cameras the user may not see or under-reports ones they may. Decide before
-story 2.3 builds devices.
+**Incidental G7 evidence:** Driveway at live-video-only reads mask `1` — bit 0 alone, **no
+bit 1**, and it has no `PERM_FILES`. Consistent with the hypothesis that bit 1 accompanies
+captured-footage access. Still not the isolating test.
 
 ## Open defects found, and their status
 
