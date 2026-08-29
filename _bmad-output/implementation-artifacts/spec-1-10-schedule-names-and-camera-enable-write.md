@@ -2,11 +2,12 @@
 title: 'Story 1.10: Schedule names and the camera enable write'
 type: 'feature'
 created: '2026-08-29'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
+baseline_revision: '917da39c23ac19ace253af4ea7dad4f507fb74b4'
 ---
 
 <intent-contract>
@@ -57,12 +58,12 @@ warnings: [oversized]
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `aiosecurityspy/src/aiosecurityspy/models.py` -- decode `schedule-list` onto `ServerInfo` and add `CameraScheduleAssignment.resolve_names` -- the id-to-name data and the pure resolver the read half of this story exists to deliver.
-- [ ] `aiosecurityspy/src/aiosecurityspy/models.py` -- add `enabled` to `CameraSettingsPatch` and its boolean field table -- reuses the existing write asymmetry rather than introducing a second one.
-- [ ] `aiosecurityspy/src/aiosecurityspy/client.py` -- add `async_set_camera_enabled` delegating to `async_set_camera_settings` -- the named accessor for FR-16.
-- [ ] `aiosecurityspy/src/aiosecurityspy/__init__.py` -- export new public names in sorted order.
-- [ ] `aiosecurityspy/tests/test_models.py`, `aiosecurityspy/tests/test_client.py` -- cover every I/O-matrix row, including the malformed and absent schedule-list forms, the unknown-id resolution, and the exact `enabled=1`/`enabled=0` body.
-- [ ] `aiosecurityspy/README.md`, `aiosecurityspy/CHANGELOG.md` -- document schedule-name resolution and the enable write, including that schedules remain read-only.
+- [x] `aiosecurityspy/src/aiosecurityspy/models.py` -- decode `schedule-list` onto `ServerInfo` and add `CameraScheduleAssignment.resolve_names` -- the id-to-name data and the pure resolver the read half of this story exists to deliver.
+- [x] `aiosecurityspy/src/aiosecurityspy/models.py` -- add `enabled` to `CameraSettingsPatch` and its boolean field table -- reuses the existing write asymmetry rather than introducing a second one.
+- [x] `aiosecurityspy/src/aiosecurityspy/client.py` -- add `async_set_camera_enabled` delegating to `async_set_camera_settings` -- the named accessor for FR-16.
+- [x] `aiosecurityspy/src/aiosecurityspy/__init__.py` -- export new public names in sorted order.
+- [x] `aiosecurityspy/tests/test_models.py`, `aiosecurityspy/tests/test_client.py` -- cover every I/O-matrix row, including the malformed and absent schedule-list forms, the unknown-id resolution, and the exact `enabled=1`/`enabled=0` body.
+- [x] `aiosecurityspy/README.md`, `aiosecurityspy/CHANGELOG.md` -- document schedule-name resolution and the enable write, including that schedules remain read-only.
 
 **Acceptance Criteria:**
 - Given the library tree, when `uv run ruff check . && uv run ruff format --check . && uv run mypy --strict src tests && uv run pytest -q` are run, then all pass with zero findings and every pre-existing test still passes.
@@ -70,7 +71,63 @@ warnings: [oversized]
 
 ## Spec Change Log
 
+- `ServerInfo.schedules` is decoded from `schedule-list` on the same `system` mapping
+  `_decode_cameras` already receives (per the Code Map). The fixture
+  `real_server_camera_list.json` used the XML-form schedule key spellings
+  (`schedule-id-cc`), which verification §3 confirms are **not** what the JSON sends
+  (`cc-schedule-id`); the fixture was corrected so the story's "camera ids resolve
+  against the decoded map" acceptance criterion is testable, and that correction is
+  pinned by a regression test that fails against the pre-fix fixture.
+- The `__init__.py` export task was a no-op: every new name is a method or field on an
+  already-exported class (`async_set_camera_enabled` is a `SecuritySpyClient` method;
+  `ServerInfo.schedules` is a field; `resolve_names` is a `CameraScheduleAssignment`
+  method), so no module-level public name changed and RUF022 stayed satisfied.
+- Tests landed in `test_settings.py` rather than `test_client.py` for the enable-write
+  coverage, matching where the existing settings-write body tests already live; the
+  story's Code Map named both files, and the settings file is the one that owns the
+  byte-exact `formData` body assertions.
+
 ## Review Triage Log
+
+- **Adversarial + edge-case: duplicate schedule ids and silent malformed-entry drops.**
+  `_decode_schedules` initially let a later duplicate win and dropped id-less/name-less
+  entries with no trace, where `_decode_cameras` keeps-first and logs every skip.
+  **Accepted:** the decoder now keeps the first entry for a duplicated id and logs each
+  malformed skip at debug, matching its sibling.
+- **Adversarial: `enabled` read default `False` differs from inventory `Camera.enabled`
+  default `True`.** The settings read model defaults every boolean to `False` (its
+  existing convention); the inventory `Camera.enabled` defaults `True`. The two are
+  different endpoints with different documents and this story adds no new
+  inconsistency -- `enabled` follows the settings model's established default. Rejected
+  as non-defect.
+- **Edge-case: adding `enabled` widens `SETTINGS_PAGE_KEYS` near the quorum gate.** The
+  quorum is an explicit, documented trade-off (its comment warns against raising it
+  without a second server version); `enabled` joining the bool field table is the spec's
+  chosen mechanism. Rejected.
+- **Adversarial: body order renders `enabled` before named int fields.** The spec
+  deliberately wires `enabled` through the existing `_SETTINGS_BOOL_FIELDS` mechanism
+  (one asymmetry, one ordering), and only single-field writes are live-verified. The
+  spec chose reuse over a second ordering rule. Rejected.
+- **Adversarial: `ServerInfo.schedules` vs `Camera.schedules` name collision.**
+  `schedules` on `ServerInfo` is the spec's chosen name for the id-to-name map; the
+  README example makes the resolution explicit. Rejected.
+- **Adversarial: no "located" flag for `schedule-list`.** The spec's I/O matrix
+  explicitly requires an absent list to decode to an empty mapping (never a raise) --
+  the opposite of the camera-list policy. Rejected.
+- **Adversarial: `async_set_camera_enabled(3, enabled=None)` raises "patch is empty".**
+  The parameter is keyword-only `bool`; mypy --strict rejects non-bool at every call
+  site, and `CameraSettingsPatch` already raises `ValueError` before any request.
+  Rejected.
+- **Adversarial: §5.5 citation reads as "unverified by write".** The committed research
+  §5.5 documents the wire mechanism (id-only checkbox, `enabled=1|0` body); live
+  confirmation (§5.8, G3/G4) is uncommitted research left for a later pass and is not
+  cited here. Rejected.
+
+## Auto Run Result
+
+- **Status:** done
+- **Follow-up review recommended:** true -- the fixture correction and the two-source
+  `enabled` semantics are worth an independent pass.
 
 ## Design Notes
 
