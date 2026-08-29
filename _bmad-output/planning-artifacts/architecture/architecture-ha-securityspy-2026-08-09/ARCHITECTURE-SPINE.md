@@ -149,6 +149,25 @@ Entity modules may import library *types* (dataclasses, exceptions for isinstanc
 - **Prevents:** the "3 consecutive failures" reauth counter living in both planes — reauth never firing, or double-firing, or one 401 on either plane triggering it.
 - **Rule:** The adapter owns a single consecutive-auth-failure counter fed by auth errors from **both** planes (poll exceptions and the stream's `auth_failed` callback). Any authenticated success on either plane resets it. At 3, the adapter raises `ConfigEntryAuthFailed` (starting reauth) and stops both planes; completing reauth restarts them. The library never counts, never persists auth state, and never initiates reauth.
 
+### AD-19 — `aiosecurityspy` is the API library; the integration consumes it [ADOPTED]
+
+- **Binds:** AD-2, AD-3, AD-11, AD-14, FR-40..FR-42, all features
+- **Prevents:** the integration accumulating a private fork of protocol behaviour by copying, subclassing, or "just adding one wrapper" — the drift that makes the library's published surface a fiction and leaves two implementations of the same wire format to disagree.
+- **Rule:** `aiosecurityspy` is the **single** implementation of the SecuritySpy API and the only thing that speaks to a SecuritySpy server. `ha-securityspy` **consumes** it as an ordinary versioned dependency. The integration must never copy library code into itself, never vendor a modified variant, and never subclass or wrap a library type to add, correct, or reinterpret protocol behaviour. If the library's behaviour is wrong or missing, the fix goes into the library — never a compensating workaround in the adapter.
+
+  **Change routing is decided by what changed, not by which repo is convenient:**
+
+  | The change is about | Where it goes |
+  | --- | --- |
+  | A SecuritySpy endpoint, wire format, decode, encode, or transport behaviour | `aiosecurityspy` |
+  | The API description of the above | `aiosecurityspy/docs/securityspy-openapi.yaml`, in the same change |
+  | A Home Assistant entity, service, config/options flow, coordinator, or HA UX | `ha-securityspy` |
+  | An HA feature that needs data the library does not yet expose | Library change first, released and pinned; then the integration feature |
+
+  The last row is the load-bearing one: an HA feature never reaches around the library to get what it needs. Epic 1's stories exist precisely because that ordering was enforced — the library gaps were found and scheduled ahead of the Epic 2/4/6 consumers that need them.
+
+  **On the in-tree copy.** `ha-securityspy/aiosecurityspy/` is a development convenience, not a fork: the integration declares it as an editable path dependency so a library change is verified against the integration in the same commit, while `manifest.json` pins the released PyPI version as the runtime contract. Those two must agree at release. The in-tree tree is the working copy that is published *from*; it is never a place to hold integration-specific changes the published library does not have.
+
 ## Consistency Conventions
 
 | Concern | Convention |
