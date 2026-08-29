@@ -83,6 +83,19 @@ Treat as reserved.
 | 3 | `Capture.file_size` reads a float-MB field with `_as_int`, losing 99.92% of values and implying bytes | **none yet** | ⬅ **needs a story — decision pending** |
 | 4 | Research doc corrections (permissions, trigger keys, `systemInfo` shape, override count, `caplist` fields) | n/a | Annotated inline in the reference doc |
 
+## Keeping the OpenAPI description honest
+
+`aiosecurityspy/docs/securityspy-openapi.yaml` is now a shipped artifact: it travels in the
+sdist and CI fails if it stops validating or if any operation loses its `x-verification`
+marker. Two rules keep it worth trusting:
+
+1. **Adding or changing an endpoint in the library means updating the description in the
+   same change.** A description that lags the client is worse than none, because it reads as
+   authoritative.
+2. **Never upgrade an `x-verification` marker without evidence.** `research-only` becomes
+   `live-6.21` only when a live response has actually been observed. Closing the gaps above
+   is what moves those markers — three of the eight operations are still `research-only`.
+
 ## Documentation follow-ups
 
 - The 6.20 reference doc is annotated section-by-section where 6.21 contradicts it. It should
