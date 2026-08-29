@@ -25,6 +25,7 @@
     "error": {
       "cannot_connect": "Could not reach SecuritySpy at that address. Check that the Mac is awake, that the host and port are right, and that SecuritySpy's web server is turned on under Preferences > Web Server. If you turned on \"Connect over HTTPS\", check that the port is SecuritySpy's HTTPS port and not its HTTP one.",
       "invalid_auth": "SecuritySpy rejected that username or password. Check the account under Preferences > Web Server > Accounts, then enter it again.",
+      "permission_denied": "That account was accepted, but it does not have permission to read the server's status. Grant it more permissions under Preferences > Web Server > Accounts, or use an account that already has them.",
       "unsupported_version": "That SecuritySpy version is too old for this integration, or it did not answer in a format this integration understands. Update SecuritySpy to version 6.0 or later and try again.",
       "invalid_host": "That host or account cannot be used. Enter the host on its own - no http://, no port and no path - and use an account whose username has no colon and whose username and password contain no non-Western characters.",
       "invalid_certificate": "SecuritySpy's certificate could not be verified. It may have expired, or - most often - it was issued for a hostname such as a dynamic DNS address, so connecting by IP address fails even though the server is fine. Enter the address the certificate was issued for, or turn off \"Verify the certificate\" to connect anyway.",
@@ -41,6 +42,9 @@
     },
     "invalid_auth": {
       "message": "SecuritySpy rejected the stored username or password. Enter the account details again."
+    },
+    "permission_denied": {
+      "message": "The stored account was accepted, but it no longer has permission to read the server's status. Grant it more permissions under Preferences > Web Server > Accounts, or use an account that already has them."
     },
     "unsupported_version": {
       "message": "This SecuritySpy version is too old for this integration. Update SecuritySpy to version 6.0 or later."

@@ -64,6 +64,7 @@ def test_no_unused_error_messages() -> None:
         "invalid_auth",
         "invalid_certificate",
         "invalid_stored_data",
+        "permission_denied",
         "unknown",
         "unsupported_version",
     ],

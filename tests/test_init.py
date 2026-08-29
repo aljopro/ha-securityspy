@@ -11,6 +11,7 @@ from aiosecurityspy import (
     SecuritySpyCertificateError,
     SecuritySpyConnectError,
     SecuritySpyError,
+    SecuritySpyPermissionError,
     SecuritySpyUnsupportedVersionError,
 )
 from homeassistant.config_entries import ConfigEntryState
@@ -84,6 +85,11 @@ async def test_unload_entry(hass: HomeAssistant, mock_client: MagicMock) -> None
             SecuritySpyAuthError("192.168.1.20", 8000, 401),
             ConfigEntryState.SETUP_ERROR,
             "invalid_auth",
+        ),
+        (
+            SecuritySpyPermissionError("unknown"),
+            ConfigEntryState.SETUP_ERROR,
+            "permission_denied",
         ),
         (
             SecuritySpyUnsupportedVersionError("5.4", "6.0"),

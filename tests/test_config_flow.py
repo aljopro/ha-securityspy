@@ -16,6 +16,7 @@ from aiosecurityspy import (
     SecuritySpyCertificateError,
     SecuritySpyConnectError,
     SecuritySpyError,
+    SecuritySpyPermissionError,
     SecuritySpyUnsupportedVersionError,
 )
 from homeassistant.config_entries import SOURCE_USER
@@ -221,6 +222,7 @@ def test_form_defaults_to_the_library_port() -> None:
     [
         (SecuritySpyConnectError("192.168.1.20", 8000, "timeout"), "cannot_connect"),
         (SecuritySpyAuthError("192.168.1.20", 8000, 401), "invalid_auth"),
+        (SecuritySpyPermissionError("unknown"), "permission_denied"),
         (SecuritySpyUnsupportedVersionError("5.4", "6.0"), "unsupported_version"),
         (SecuritySpyError("something unforeseen"), "unknown"),
     ],

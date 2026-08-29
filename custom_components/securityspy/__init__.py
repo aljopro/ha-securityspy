@@ -20,6 +20,7 @@ from aiosecurityspy import (
     SecuritySpyClient,
     SecuritySpyConnectError,
     SecuritySpyError,
+    SecuritySpyPermissionError,
     SecuritySpyUnsupportedVersionError,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -148,6 +149,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
     except SecuritySpyAuthError as err:
         raise ConfigEntryAuthFailed(
             translation_domain=DOMAIN, translation_key="invalid_auth"
+        ) from err
+    except SecuritySpyPermissionError as err:
+        # The credentials are correct but the account lacks a permission
+        # `async_get_server_info` needs -- re-authenticating cannot fix this,
+        # so it is a permanent `ConfigEntryError`, not `ConfigEntryAuthFailed`
+        # (which would send the user through a reauth flow that changes
+        # nothing) and not `ConfigEntryNotReady` (which would retry forever).
+        raise ConfigEntryError(
+            translation_domain=DOMAIN, translation_key="permission_denied"
         ) from err
     except SecuritySpyUnsupportedVersionError as err:
         raise ConfigEntryError(

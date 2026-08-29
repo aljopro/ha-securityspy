@@ -22,6 +22,7 @@ from aiosecurityspy import (
     SecuritySpyClient,
     SecuritySpyConnectError,
     SecuritySpyError,
+    SecuritySpyPermissionError,
     SecuritySpyUnsupportedVersionError,
     ServerInfo,
 )
@@ -64,6 +65,7 @@ _LOGGER: Final = logging.getLogger(__name__)
 _ERROR_KEYS: Final[tuple[tuple[type[SecuritySpyError], str], ...]] = (
     (SecuritySpyCertificateError, "invalid_certificate"),
     (SecuritySpyAuthError, "invalid_auth"),
+    (SecuritySpyPermissionError, "permission_denied"),
     (SecuritySpyUnsupportedVersionError, "unsupported_version"),
     (SecuritySpyConnectError, "cannot_connect"),
 )
