@@ -78,6 +78,50 @@ Map: `PERM_SCHED` → arm switches · `PERM_CAMCONTROL` → PTZ · `PERM_PTZSET`
 
 Raise a **repair issue** naming the missing permission when a user expects a feature they cannot access — actionable, so it passes the repair-issue test.
 
+**⚠ Amended 2026-08-29 — the mask is not static.** Live verification (§5.11) shows a camera that
+is offline *loses* the capability bits it cannot currently satisfy — `PERM_AUDIORCV` and
+`PERM_AUDIOSND` were observed dropping and returning on reconnect, confirmed by prediction. So
+"pre-flight per camera and skip what the mask denies" is unsafe as written: a setup run while a
+camera happens to be offline silently omits entities that should exist, and they reappear only
+on a reload. Any pre-flight must read the mask **while the camera is online**, or treat an
+absent bit on an offline camera as *unknown* rather than *denied*. Never cache the mask as a
+property of the account.
+
+---
+
+## 5b. Disabled is a state, not an absence
+
+**The evidence (§5.12).** Disabling a camera in SecuritySpy removes it from `++systemInfo`
+entirely — `camera-list` shrinks and `server.camera-count` drops to match — while `++camStatus`
+still reports it as `enabled:false, online:false, open:false, err:0`. An *unreachable* camera
+reads differently: `enabled:true, online:false, err:64 "Host is down"`.
+
+**The conclusion.** `++camStatus` is the **inventory of record**, because it is the only surface
+that distinguishes the three cases the user cares about:
+
+| user's situation | `++camStatus` | `++systemInfo` | what HA should say |
+|---|---|---|---|
+| camera working | `enabled:true, online:true` | present | normal state |
+| camera unplugged or faulted | `enabled:true, online:false, err≠0` | present | `unavailable` — genuinely unknown |
+| camera **disabled by the user** | `enabled:false, err:0` | **absent** | a deliberate off state, *not* `unavailable` |
+
+Reporting a disabled camera as `unavailable` is misleading: `unavailable` means "cannot reach,
+do not know", and a switched-off camera is a known, intentional state that the user chose. It
+reads as a fault the user then goes looking for. Keep the device and its entities, and surface
+"disabled" distinctly — `enabled` is exactly the signal needed, and story 1.10 already
+implements the write that flips it, so the state is actionable and not merely informational.
+
+Building the inventory from `++systemInfo` instead makes a disabled camera's device and
+entities **disappear**, orphaning history and breaking automations that reference them — the
+failure story 3.1 exists to prevent.
+
+**`[ASSUMPTION]` — not verified.** A camera *deleted* from SecuritySpy is expected to vanish
+from `++camStatus` too, which would make "absent from `camStatus`" the discriminator between
+deleted and disabled. Testing it means deleting a real camera, which was not worth doing.
+Until it is verified, do not build removal logic that depends on it.
+
+Affects stories **2.3**, **2.7**, **3.1**, and **6.4**.
+
 ---
 
 ## 6. The observation record is the headline

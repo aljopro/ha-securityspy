@@ -589,9 +589,16 @@ direct consequences for the integration:
 `++systemInfo`, disabling a camera in SecuritySpy makes its Home Assistant device and entities
 *disappear* rather than go unavailable — which is the failure story 3.1 ("report unavailable
 rather than stale") exists to prevent, and it would silently orphan history and break
-automations. Stories 2.3, 2.7 and 3.1 must decide deliberately whether the inventory of record
-is `++camStatus` (11, includes disabled) or `++systemInfo` (10, excludes them). The two are not
-interchangeable.
+automations.
+
+**`++camStatus` is therefore the inventory of record**, and the reason is stronger than "it has
+more rows": it is the only surface that says *why* a camera is not producing. `enabled:false`
+with `err:0` is a deliberate administrative state; `enabled:true, online:false, err:64` is a
+fault. Home Assistant's `unavailable` means "cannot reach, do not know" — the right answer for
+the second case and a misleading one for the first, where it reads as a fault the user then
+goes hunting for. A disabled camera should keep its device and entities and surface its
+disabled state distinctly, which is also actionable: story 1.10 implements the write that
+flips `enabled` back. See `architecture-implications.md` §5b.
 
 **Also confirmed here:** §5.11's falsifiable prediction. With Living Room reconnected, its mask
 read **`12255`** under the Administrator account — exactly as predicted, both audio bits
