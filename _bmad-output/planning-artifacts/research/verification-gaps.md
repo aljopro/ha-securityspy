@@ -66,10 +66,31 @@ the restore returned it exactly. **Partial-write safety measured across all 129 
 one changed.** After restore, zero differ from the original. Story 1.10's mechanism is
 confirmed end to end.
 
-### G5 — No camera-scoped 403 🟡 STILL OPEN
-Unchanged. Producing one needs an account with live-video but *without* `PERM_FILES`, then a
-capture fetch. The elevated account has more permissions, not fewer, so it could not produce
-this. Story 1.11's matrix row for "the error carries that camera number" remains unverified.
+### G5 — No camera-scoped 403 ✅ CLOSED 2026-08-29 — **the premise was wrong**
+`aielevatedtest` was dropped to **Live**-only permission and the media endpoints were fetched
+with it. There is no camera-scoped 403 to find, because **media endpoints answer a
+permission failure with `401`, not `403`**:
+
+| endpoint | full-permission account | Live-only account |
+|---|---|---|
+| `++getfile` | `206 video/quicktime` | **`401`** |
+| `++getfilehb` | `206 video/quicktime` | **`401`** |
+| `++getfilelb` | `206 video/mp4` | **`401`** |
+| `++getpreview` | `200 image/jpeg` | **`401`** |
+| `++systemInfo` / `++caplist` / `++camStatus` | `200` | `200` |
+
+The same credentials return `200` on `++systemInfo` in the same second, so they are valid.
+The `401` is a **permission** verdict wearing an authentication status code, and §5.2's
+"an unprivileged account gets 403, not 401" holds only for the settings pages.
+
+**Worse: the response is byte-identical to a wrong password.** Same status, same
+`WWW-Authenticate: Basic realm="SecuritySpy"`, same 16-byte `401 Unauthorized` body. Nothing
+in the response distinguishes "your password is wrong" from "your account may not read
+captures", so no amount of care at the mapping seam can tell them apart from one response.
+
+Story 1.11's matrix row for "the error carries that camera number" is therefore **not
+verifiable as written** — that row describes a response shape this server does not produce.
+See defect 7.
 
 ### G6 — No camera in an error state 🟢
 **Blocks:** confirming `CameraStatus.error`'s type. All 11 cameras report `err: 0` (an
@@ -94,6 +115,7 @@ Treat as reserved.
 | 4 | Research doc corrections (permissions, trigger keys, `systemInfo` shape, override count, `caplist` fields) | n/a | Annotated inline in the reference doc |
 | 5 | Server timezone published as `seconds-from-gmt` but ignored; every event and capture timestamp is off by the server's UTC offset | 1.13 | Specced, `ready-for-dev` |
 | 6 | `CameraSettings.presence_rect` reads `presenceRect`, absent on all 11 cameras, so it is permanently `None` | none yet | Low priority; may be custom-model-conditional and untested |
+| 7 | Media endpoints return `401` for a *permission* failure, byte-identical to a wrong password, so a Live-only account trips credential reauth forever instead of being told it lacks capture access | **none yet** | ⬅ **needs a story**; also invalidates a story 1.11 acceptance row |
 
 ## Keeping the OpenAPI description honest
 

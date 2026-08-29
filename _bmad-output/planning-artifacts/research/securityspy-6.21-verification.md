@@ -410,6 +410,45 @@ Both arrays are **empty**, as on the reference server, so the elevated account d
 close G2 — the shape of a *user-defined* schedule remains unverified and still needs someone
 to create one.
 
+## 5.9 Media endpoints answer a permission failure with `401` (closes G5) ⭐⭐
+
+`aielevatedtest` was reduced to **Live**-only permission for this test.
+
+| endpoint | full-permission | Live-only |
+|---|---|---|
+| `++getfile` | `206 video/quicktime` | **`401`** |
+| `++getfilehb` | `206 video/quicktime` | **`401`** |
+| `++getfilelb` | `206 video/mp4` | **`401`** |
+| `++getpreview` | `200 image/jpeg` | **`401`** |
+| `++systemInfo`, `++caplist`, `++camStatus` | `200` | `200` |
+
+The credentials are valid — `++systemInfo` returns `200` for the same account in the same
+second. So on the media endpoints SecuritySpy expresses *insufficient permission* as `401`,
+and §5.2's "an unprivileged account gets `403`, not `401`" is true **only of the settings
+pages**. Which code a denial carries is a property of the endpoint, not of the server.
+
+**The permission `401` is byte-identical to a wrong-password `401`.** A deliberately wrong
+password on the same URL returns the same status, the same
+`WWW-Authenticate: Basic realm="SecuritySpy"`, and the same 16-byte `401 Unauthorized`
+body. There is no discriminator in the response.
+
+**Consequence (defect 7).** A Live-only user's capture fetch raises `SecuritySpyAuthError`,
+which in Home Assistant means a reauth prompt. The user re-enters *correct* credentials, and
+the next fetch fails identically — an unbreakable loop, with the true cause ("this account
+may not read captures") never surfaced. This is the same failure story 1.11 exists to
+prevent, reached by a path the story did not anticipate.
+
+Any fix has to come from **outside** the single response, since the response carries no
+signal: e.g. on a media `401`, re-read a known-permitted endpoint, and if that succeeds treat
+the denial as a permission failure rather than an authentication one. That is a library
+change under AD-19 and wants its own story — it is not a mapping-seam tweak.
+
+**Also settled here:** `++caplist` accepts `startDate`/`endDate` as **`YYYY-MM-DD` only**. A
+full ISO instant (`2026-08-20T00:00:00`) and a compact `20260820000000` both return `[]` —
+success with silent zero results, never an error. The library already rejects `datetime`
+bounds in `async_get_captures` with a comment predicting exactly this; that prediction is now
+confirmed on a live server.
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
