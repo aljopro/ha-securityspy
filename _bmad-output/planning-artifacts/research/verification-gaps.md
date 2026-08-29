@@ -180,3 +180,11 @@ marker. Two rules keep it worth trusting:
   schema for the field.
 - **Schedule and preset ids exceed int32.** Observed 3186401225 for a preset. Any future
   decode, storage, or entity attribute must treat these as arbitrary-width ints.
+- **`server.wan-address` is not redacted by `anonymize()`.** Under an Administrator account it
+  carries the server's registered remote-access hostname (a personal `*.viewcam.me` name);
+  under a lesser account it echoes the connected host. It is not a credential, so story 1.7
+  holds as written, but it is personally identifying network information that would travel
+  verbatim in a diagnostics dump attached to a public issue. Decide deliberately whether the
+  anonymizer should cover identifying hostnames as well as credentials (§5.11).
+- **Permission bit 5 (32) has never been observed set** under any of the four permission types
+  tested, including Administrator. Unlike bit 1 it appears unused rather than merely unnamed.

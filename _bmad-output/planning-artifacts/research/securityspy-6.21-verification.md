@@ -492,6 +492,46 @@ throughout):
   answer matters: if the mask varies with camera state, no consumer may cache it as a static
   property of the account.
 
+## 5.11 The full permission bitmask, read under an Administrator account ⭐⭐
+
+With `aielevatedtest` set to **Administrator — full access to everything**, the per-camera
+masks are *not* uniform:
+
+| mask | cameras | bits set |
+|---|---|---|
+| `12255` | 1, 5, 8, 9, 10 | 0,1,2,3,4,6,7,8,9,10,**11**,13 |
+| `10207` | 0, 2, 3, 4, 6 | 0,1,2,3,4,6,7,8,9,10,13 |
+| `9695` | 7 (unplugged) | 0,1,2,3,4,6,7,8,10,13 |
+
+**The mask is granted rights intersected with what the camera can do.** An Administrator holds
+every right, yet five cameras lack `PERM_AUDIOSND` (bit 11) and the unplugged one also lacks
+`PERM_AUDIORCV` (bit 9). The five carrying bit 11 are exactly the five reporting `A-Law`
+audio; the five without it report `u-Law`. So `has_permission()` reading as "*this camera*
+grants X" is the correct framing, and `const.py` naming it a "per-camera permission bitmask"
+is right — a consumer must never collapse the eleven masks into one account-level set.
+
+This live-verifies nine of the eleven named bits at once (0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 13).
+Two remain unobserved and both are explainable:
+
+- **Bit 12 `PERM_NODOWNLOAD` is clear on every camera**, which is the expected reading of an
+  Administrator under §4.1's inverted sense: set means *hide* download options. A grant-shaped
+  bit would have been set here. This is the first live evidence for the deny-bit
+  interpretation, and it holds.
+- **Bit 5 (32) has never been observed set** under any of the four permission types tested.
+  Unlike bit 1 it is not merely unnamed — it appears unused. Do not model it.
+
+**Bit 1 (2) is set on every camera even for an Administrator**, consistent with §5.10: it
+arrives with Captures and is held by anyone who has them. Still unnamed, still unassigned.
+
+**One privacy finding.** `server.wan-address` differs by account: the Administrator sees the
+server's registered remote-access hostname (a personal `*.viewcam.me` name), while the
+ordinary account sees only the host it connected to. `is_credential_key("wan-address")` is
+`False` and `anonymize()` passes the value through unchanged, so this hostname would appear
+verbatim in a Home Assistant diagnostics dump that users routinely attach to public issues. It
+is not a credential, so story 1.7 is not violated as written — but it is personally
+identifying network information, and HA's own guidance treats that as redactable. See
+"Documentation follow-ups".
+
 ## 6. Endpoints the client calls that §2.2 omits
 
 `openHomeHelper`, `openUrl?url=`, `soundFile?format=m4a&name=`, `userManual?lang=`,
