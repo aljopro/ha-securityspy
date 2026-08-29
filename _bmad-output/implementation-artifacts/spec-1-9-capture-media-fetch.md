@@ -2,9 +2,9 @@
 title: 'Story 1.9: Capture media fetch'
 type: 'feature'
 created: '2026-08-28'
-status: 'review'
+status: 'done'
 baseline_revision: 'f42960c7f42828a882d441f180efccf8032ccce3'
-review_loop_iteration: 0
+review_loop_iteration: 1
 followup_review_recommended: false
 context: []
 warnings: [oversized]
@@ -68,9 +68,52 @@ warnings: [oversized]
 - Given the library tree, when `uv run ruff check . && uv run ruff format --check . && uv run mypy --strict src tests && uv run pytest -q` are run, then all pass with zero findings and every pre-existing test still passes.
 - Given a `CaptureFileStream` returned by `async_get_capture_file`, when its bytes are consumed via `async for chunk in stream`, then no single call ever holds more than one bounded chunk of the movie body in memory at once.
 
+### Review Findings
+
+_Code review 2026-08-29 (baseline `f42960c`..`544eada`). Layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor. Suite was green (811 passed) at review time — every item below is a gap the tests do not catch._
+
+- [x] [Review][Patch] Remove the dead `CaptureFileBandwidth.content_type` field [aiosecurityspy/src/aiosecurityspy/models.py:1086] -- **Decision (2026-08-29, Jensen): trust the server header.** `_stream_bytes` keeps reporting `response.content_type` (client.py:876). Delete the `content_type` field and its three table entries (models.py:1091-1109), restate the LOW/HIGH matrix rows so the spec no longer promises a library-asserted media type, and drop or rewrite the two tests that merely assert their own fixture (test_client.py:1013-1039). Also correct the CHANGELOG/README claim that each bandwidth carries "its own content type".
+- [x] [Review][Patch] Add a `sock_read` bound for finite media transfers [aiosecurityspy/src/aiosecurityspy/connection.py:218] -- **Decision (2026-08-29, Jensen): add the bound.** `stream_timeout()` (`total=None`, no `sock_read`) was designed for the never-ending event stream; a file transfer that stalls mid-body blocks `read()` forever and holds the connection. Add a separate timeout variant (`total=None`, `sock_read=self.timeout`) for `_stream_bytes` (client.py:838), leaving the event stream's timeout untouched. This is a deliberate deviation from the Code Map's prescribed `stream_timeout()` -- record it in the Spec Change Log with the rationale.
+- [x] [Review][Dismissed] HTTP 200 with a non-media body is accepted as success -- **Decision (2026-08-29, Jensen): leave as-is.** Neither method validates content type or rejects an empty body (client.py:792, 876); a captive portal or HTML error page returns as a successful `CapturePreview`. Accepted by design: the spec requires no check here, and rejecting unexpected content types risks false failures against SecuritySpy builds we have not observed. The server's answer is returned verbatim.
+- [x] [Review][Patch] Capture file path is interpolated raw — no percent-encoding [aiosecurityspy/src/aiosecurityspy/client.py:835] — `path = f"{endpoint}/{path_suffix}"` with `path_suffix=capture.path` (client.py:752), while the preview path IS quoted (client.py:698). Violates Always: "The filename component of the URL is percent-encoded with `urllib.parse.quote` ... never interpolated raw", and all three getfile matrix rows specify `<url-encoded filename>`. `_capture_path` (models.py:304-322) rejects only `/`, `\`, `..` and its own docstring says the consumer must quote; `?`, `#`, `%`, and spaces pass through. A `?` in a camera name truncates the path and corrupts the `archive` param. Fix must include a test asserting the encoded filename on the file endpoint — `test_file_bandwidth_selects_correct_endpoint` (test_client.py:1512) never asserts the filename component.
+- [x] [Review][Patch] `CaptureFileStream` is not exported from `__init__.py` [aiosecurityspy/src/aiosecurityspy/__init__.py] — the Code Map requires it and the Dev Agent Record claims "All new names exported"; it is absent. The public return type of `async_get_capture_file` is unnameable from the published surface, and the tests reach in via `from aiosecurityspy.client import CaptureFileStream` (test_client.py:36).
+- [x] [Review][Patch] Stream leaks the connection when not fully drained [aiosecurityspy/src/aiosecurityspy/client.py:131-150] — `_release()` runs only in the async generator's `finally`. A caller that `break`s out of the loop, or that reads `.content_type` and never iterates (generator never created), leaves the response checked out; release then depends on non-deterministic asyncgen/`__del__` finalization. The class exposes no `aclose()`, no `close()`, no `__aenter__`/`__aexit__`, and its docstring (client.py:106-108) asserts a GC-release guarantee the code does not provide. In a long-lived HA process this exhausts the connector pool. Fix: add `aclose()` + async context manager support, and correct the docstring.
+- [x] [Review][Patch] Non-int `bandwidth` raises bare `AttributeError` instead of the documented `ValueError` [aiosecurityspy/src/aiosecurityspy/client.py:749] — `bw = capture_file_bandwidth(bandwidth) if isinstance(bandwidth, int) else bandwidth` passes any non-int through unchecked; `bw.endpoint` then raises `AttributeError`, escaping the typed hierarchy. The docstring (client.py:326-327) promises `ValueError` "before any request is issued". Tested only with `bandwidth=99`, never a wrong type. Related: the signature is widened to `CaptureFileBandwidth | int` where the spec fixes it at `CaptureFileBandwidth`.
+- [x] [Review][Patch] Shared request helper was never extracted [aiosecurityspy/src/aiosecurityspy/client.py:758, 818] — the Code Map requires refactoring `_request`'s URL-build/GET/status-map prologue "into a shared private async context-manager helper reused by the existing buffered path". `_request` is untouched; `_request_bytes` and `_stream_bytes` each re-implement the 401/403 → redirect → unexpected-status ladder verbatim. Three independent copies of the status-mapping rules now exist.
+- [x] [Review][Patch] Preview double-`?` URL is never validated through real URL encoding [aiosecurityspy/src/aiosecurityspy/client.py:698-699] — the assembled `++getpreview?/{encoded}?archive={0|1}` string is handed to aiohttp, which re-parses and re-encodes it via yarl. Every covering test (test_client.py:856-908) asserts against `FakeStreamSession`, which records the raw string before aiohttp touches it. If yarl re-quotes the second `?` or the `%2B` sequences inside what it treats as the query component, archived previews silently return the non-archived image with the suite still green. Add a test that goes through real yarl construction.
+- [x] [Review][Patch] 8 MiB preview cap is documented three times and tested zero times [aiosecurityspy/src/aiosecurityspy/client.py:794-802] — `_request_bytes` is an independently written copy of the cap logic; the only `"too large"` test (test_client.py:682-686) exercises `_request`. The `read(_MAX_BODY_BYTES + 1 - total)` arithmetic could be off by one and every test still passes. Matrix row "Body exceeds the preview cap" is uncovered.
+- [x] [Review][Patch] `_request_bytes` drops the `Content-Length` pre-check that `_request` has [aiosecurityspy/src/aiosecurityspy/client.py:788] — `_request` rejects on `response.content_length > _MAX_BODY_BYTES` before reading; `_request_bytes` goes straight to the accumulation loop and buffers a full 8 MiB before failing.
+- [x] [Review][Patch] Re-iterating a drained stream misreports caller misuse as a transport error [aiosecurityspy/src/aiosecurityspy/client.py:131-133] — `__aiter__` returns a fresh generator each call while `_released` is latched. A second pass reads an already-released response; the resulting `ClientError` is relabelled `SecuritySpyConnectError("stream failure ...")`, so a caller retrying iteration sees a network fault and may retry forever against a healthy server. A partially consumed stream instead silently yields only the remainder.
+- [x] [Review][Patch] Dead `isinstance(err, SecuritySpyError)` guard in both new transport paths [aiosecurityspy/src/aiosecurityspy/client.py:811, 848] — `SecuritySpyError` subclasses `Exception` only, so it can never be bound by `except (aiohttp.ClientError, TimeoutError, OSError)`. Reads as a deliberate safety net that does nothing.
+- [x] [Review][Patch] Mid-stream failure is only tested at chunk zero [aiosecurityspy/tests/test_client.py:1226-1279] — the matrix row specifies failure "after some chunks have already been yielded"; all three transport-error tests raise on the first `read()`. The partially-consumed-generator path is unverified.
+- [x] [Review][Patch] Neither new method has a redirect test [aiosecurityspy/src/aiosecurityspy/client.py:781, 856] — both carry a 3xx branch with the `use_https=True` hint; tests cover 401 and 404 only. `_stream_bytes`' redirect-path `response.release()` is never exercised.
+- [x] [Review][Patch] The 64 KiB chunk bound is an unnamed literal and is never actually exercised [aiosecurityspy/src/aiosecurityspy/client.py:139] — `read(64 * 1024)` is a bare magic number (unlike `_MAX_BODY_BYTES`), and `FakeStreamContent` clamps every read to 64 bytes regardless of the limit passed (test_client.py:754-759). Raising the literal to 64 MiB — defeating the memory bound the feature is sold on — keeps every test green.
+- [x] [Review][Patch] `response: Any` on `CaptureFileStream` is unnecessary [aiosecurityspy/src/aiosecurityspy/client.py:117] — the comment says "typed loosely to avoid import", but `aiohttp` is imported at client.py:17 and used at client.py:142. The `Any` disables type checking on exactly the two calls whose aiohttp contract matters: `content.read()` and `release()`.
+- [x] [Review][Patch] `_request_bytes`' `params` argument is dead [aiosecurityspy/src/aiosecurityspy/client.py:759] — the sole caller passes only `path` because the preview's archive flag is baked into the path string. A future caller passing `params={"archive": "1"}` would produce the flag in both the path and the query. `test_preview_url_has_double_question_mark` asserts `kwargs["params"] == {}`, documenting the emptiness rather than removing the parameter.
+
 ## Spec Change Log
 
 - **2026-08-28**: Initial implementation of capture media fetch (preview and file streaming)
+- **2026-08-29**: Code review; 17 patches applied. Three deliberate deviations from this
+  spec, each decided by Jensen during review:
+  - **`CaptureFileBandwidth` no longer carries a content type.** The I/O matrix rows
+    "LOW -> `video/mp4`" and "HIGH -> `video/quicktime`" described a table the code never
+    consulted; `CaptureFileStream.content_type` reports the response header instead. The
+    matrix rows now mean "the content type the server served for that endpoint", and the
+    dead field is gone rather than left to drift from the wire.
+  - **The file stream no longer uses `stream_timeout()`.** The Code Map prescribed it, but
+    it carries no `sock_read` because it was built for the never-ending event stream. A
+    finite media transfer that stalls mid-body would hang the reader forever while holding
+    the connection, so `_stream_bytes` uses a new `ConnectionSettings.media_timeout()`
+    (`total=None`, `sock_read` bounded). The event stream's timeout is untouched.
+  - **`CaptureFileStream` gained `aclose()` and async-context-manager support.** Not in the
+    spec, but the class documented a release-on-garbage-collection guarantee it could not
+    provide: a stream that is never iterated never builds the generator whose `finally`
+    releases the response. The docstring and README now match the code.
+- **2026-08-29**: Accepted by design during review: a 200 response carrying a non-media
+  body (an HTML error page, an empty body) is still returned as a success. The spec
+  requires no content-type check, and rejecting unexpected types risks false failures
+  against SecuritySpy builds not yet observed.
 
 ## Design Notes
 
