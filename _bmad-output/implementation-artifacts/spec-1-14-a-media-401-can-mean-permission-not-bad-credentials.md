@@ -2,11 +2,13 @@
 title: "Story 1.14: A 401 can mean permission, not bad credentials"
 type: 'bugfix'
 created: '2026-08-29'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
+final_revision: 'PENDING'
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
+baseline_revision: 'f10aa927daca9b3d851e99d7c206f8d2f18311b8'
 ---
 
 <intent-contract>
@@ -54,10 +56,10 @@ warnings: [oversized]
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `aiosecurityspy/src/aiosecurityspy/client.py` -- disambiguate a `401` before it escapes, keeping `_map_status` the only place a status is interpreted -- a second status ladder would be exactly the divergence AD-6 exists to prevent.
-- [ ] `aiosecurityspy/src/aiosecurityspy/client.py` -- correct every docstring asserting that `401` means rejected credentials -- the false claim is cited as verified, which is how it survived review.
-- [ ] `aiosecurityspy/docs/securityspy-openapi.yaml` -- describe the endpoint-dependent meaning of `401` on the media operations -- a shipped description that lags the client reads as authoritative.
-- [ ] `aiosecurityspy/tests/test_client.py` -- cover every row of the matrix, including the inconclusive probe and the connection-release ordering -- a fixture that only ever returns one kind of `401` is what let this ship.
+- [x] `aiosecurityspy/src/aiosecurityspy/client.py` -- disambiguate a `401` before it escapes, keeping `_map_status` the only place a status is interpreted -- a second status ladder would be exactly the divergence AD-6 exists to prevent.
+- [x] `aiosecurityspy/src/aiosecurityspy/client.py` -- correct every docstring asserting that `401` means rejected credentials -- the false claim is cited as verified, which is how it survived review.
+- [x] `aiosecurityspy/docs/securityspy-openapi.yaml` -- describe the endpoint-dependent meaning of `401` on the media operations -- a shipped description that lags the client reads as authoritative.
+- [x] `aiosecurityspy/tests/test_client.py` -- cover every row of the matrix, including the inconclusive probe and the connection-release ordering -- a fixture that only ever returns one kind of `401` is what let this ship.
 
 **Acceptance Criteria:**
 - Given an account missing the permission an endpoint requires, when that endpoint is called, then the caller receives a permission error naming the camera where one is known, and Home Assistant does not start a reauth flow. Verified live for the four media endpoints and for `++ssSetSchedule`.
@@ -66,7 +68,20 @@ warnings: [oversized]
 
 ## Spec Change Log
 
+Implemented as specified. `_map_status` became `async` (it now awaits the disambiguating probe on its `401` branch); every call site already ran inside an async method, so this added no new constraint. `async_get_server_info` always issues its own request with `disambiguate=False` -- not only when called internally as the probe -- since a direct `401` from `++systemInfo` itself has nothing further to disambiguate against (matrix row "The probe endpoint itself 401s"); this reads as a direct consequence of that row rather than a deviation from it.
+
 ## Review Triage Log
+
+### 2026-08-29 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 1: (high 1, medium 0, low 0)
+- defer: 0
+- reject: 11: (high 0, medium 2, low 9)
+- addressed_findings:
+  - `[high]` `[patch]` `_stream_bytes`/`_request_bytes` called `_map_status` (which, on a `401`, awaits the disambiguating `++systemInfo` probe) *before* releasing the original failed response, so the probe ran while the original response was still holding a connection out of the caller's pool -- exactly the leak the pre-existing "still holding a connection" comment had been written to warn about, now silently defeated by the probe becoming a second live request inside that window. Fixed by releasing the response as soon as its status is seen to be non-2xx, before `_map_status` (and therefore the probe) is ever awaited, in both `_stream_bytes` and `_request_bytes`. Added `test_streamed_media_401_releases_the_connection_before_probing` and `test_buffered_media_401_releases_the_connection_before_probing`, which fail if the probe request fires before the prior response is released -- the pre-existing `test_streamed_media_401_releases_the_connection_before_reclassifying` only checked release happens before the exception is raised, which the bug also satisfied.
+
+Rejected (all reviewer-flagged, not spec violations): applying disambiguation to `++camStatus`/`++caplist` without endpoint-specific evidence -- this is the explicit design (`Boundaries & Constraints`: "keyed on the `401` status, not on a list of endpoints"), not a gap; the extra round-trip on every `401` including genuinely-wrong-password -- explicitly accepted in the same constraint ("adds exactly one request to a request that has already failed"); no test for camStatus/caplist 401s -- not in the spec's I/O matrix; no cross-request dedup of concurrent probes -- would require caching a verdict across calls, which the spec's `Never` section forbids; probe uses `request_timeout()` not `media_timeout()` -- `++systemInfo` is a small JSON endpoint regardless of what the original call was, so this is correct as-is; probe swallowing the specific failure reason -- deliberate, matches the "inconclusive probe must never upgrade or downgrade the verdict" rule; PERM_FILES lookup duplicated at two call sites; OpenAPI quirk wording nuance; test docstring "verified live" phrasing; `disambiguate` param not threaded through `_request_text`/`_post_form` (unused by any current caller); `_map_status` docstring phrasing about `403` reliability -- all cosmetic/style, no behavior impact.
 
 ## Design Notes
 
@@ -85,3 +100,18 @@ An earlier revision of this spec scoped the fix to the four media endpoints. `++
 
 **Manual checks (if no CLI):**
 - Against the live server, a Live-only account fetching `++getfile` must raise a permission error naming the camera; the same fetch with a full-permission account must succeed and issue one request.
+
+## Auto Run Result
+
+**Summary:** `_map_status` now disambiguates any `401` (unless `disambiguate=False`) with one follow-up read of `++systemInfo`. A clean success there reclassifies the `401` as `SecuritySpyPermissionError` carrying the permission and camera when known; any other outcome leaves `SecuritySpyAuthError` unchanged. `async_get_server_info` always passes `disambiguate=False` to avoid probing itself.
+
+**Files changed:**
+- `aiosecurityspy/src/aiosecurityspy/client.py` -- `_map_status` made async and disambiguates `401`; new `_probe_confirms_permission_denial` helper; media accessors thread `permission`/`camera_number` through; corrected docstrings claiming `401` always means rejected credentials; `_stream_bytes`/`_request_bytes` release their response before the status is interpreted (and thus before the probe fires) rather than only before the exception propagates.
+- `aiosecurityspy/docs/securityspy-openapi.yaml` -- documents the endpoint-dependent `401` meaning on the media operations and `++ssSetSchedule`.
+- `aiosecurityspy/tests/test_client.py` -- ten tests covering every I/O matrix row, plus two added during review to pin down that the probe never fires while a prior response is still held open.
+
+**Review findings:** 1 patch applied (high-severity connection-holding bug where the disambiguating probe fired while the original failed response was still held open, doubling pool usage on every reclassified `401`); 11 rejected as either explicit spec design (endpoint-agnostic disambiguation, the extra round-trip, no verdict caching) or cosmetic/style with no behavior impact.
+
+**Verification:** `uv run pytest` -- 912 passed. `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy --strict src` -- all clean. OpenAPI validator -- no output (valid).
+
+**Residual risks:** None identified beyond the two rejected-as-by-design tradeoffs (extra round-trip per ambiguous `401`; disambiguation applies uniformly rather than to a maintained endpoint list, which is the explicit point of the design).
