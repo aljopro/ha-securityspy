@@ -487,10 +487,21 @@ throughout):
   `PERM_AUDIORCV` (bit 9). Bit 9 matches `has-audio` on all 11 cameras. It initially looked
   like camera connectivity because the sole camera missing it is the unplugged one, which
   reports `has-audio: false` and an empty `audio-format` while down.
-- **Unsettled:** whether a disconnected camera *loses* `PERM_AUDIORCV` from its mask, or
-  camera 7 simply has no audio. Re-reading after the camera is restored decides it, and the
-  answer matters: if the mask varies with camera state, no consumer may cache it as a static
-  property of the account.
+- **Settled (2026-08-29): the mask varies with camera connection state.** Camera 7 has a
+  microphone. Two probes that do not need the camera reachable:
+  1. Its `++settings-cameras` page is identical to a working camera's on every audio field —
+     `noAudioSend` unchecked, the same `audioDevice` selection. So the missing bits are not a
+     configuration.
+  2. A stored Living Room recording from 2026-08-08, fetched via `++getfile` and inspected
+     with `ffprobe` (stream metadata only), carries **`pcm_alaw`, 8 kHz, mono** alongside its
+     H.264 video. The camera not only has a microphone, it is an **A-Law** device — so when
+     connected it belongs to the `12255` group and holds *both* audio bits.
+
+  Its mask reads `9695` purely because it is unplugged. **`camera-list[].permissions` is
+  therefore not a static property of the account or the hardware: a camera going offline
+  visibly loses permission bits.** A consumer must never cache the mask, and must never infer
+  "this account may not receive audio from this camera" from a single reading — the camera may
+  simply be down. Prediction, falsifiable on replug: camera 7 returns to `12255`.
 
 ## 5.11 The full permission bitmask, read under an Administrator account ⭐⭐
 

@@ -134,10 +134,11 @@ camera 7 unplugged throughout:
   connectivity-shaped only because the one camera missing it is the unplugged one, and a
   disconnected camera reports `has-audio: false` with an empty `audio-format`. Across all 11
   cameras bit 9 matches `has-audio` exactly.
-- **Open sub-question, cheap to settle:** whether camera 7 loses bit 9 because it has no audio
-  hardware or because a disconnected camera cannot report audio. Re-read `++systemInfo` once
-  Living Room is plugged back in — if bit 9 returns, the mask varies with camera *state* and
-  not only with account rights, which would matter to any consumer caching it.
+- **Sub-question settled: the mask varies with camera connection state.** A stored Living Room
+  recording carries a `pcm_alaw` audio track, and its settings page matches a working camera's
+  on every audio field — so the camera has a microphone and loses bits 9 and 11 only because it
+  is unplugged. `camera-list[].permissions` is not static: **no consumer may cache it, and an
+  absent bit is not evidence of a withheld right when the camera may be offline.** See §5.11.
 
 **Action:** do not assign bit 1 a meaning. Bits 8 and 9 need no action — they are already
 modelled correctly.
