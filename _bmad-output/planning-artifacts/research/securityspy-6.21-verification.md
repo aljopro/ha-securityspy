@@ -1265,10 +1265,27 @@ PTZ without also offering arming.
 named nowhere."* **That is wrong.** The Driveway camera, granted live video and
 nothing else, reports mask `1` with bit 1 clear.
 
-Across eight independently observed masks — `1`, `513` (twice), `519`, `839`,
-`4063`, `10207`, `12255` — bit 1 is set **if and only if** `PERM_FILES` (4) is
-set. It has no checkbox, so the server sets it alongside "Get captured footage".
-Its meaning is unknown; its correlation is exact.
+Across nine independently observed masks — `1`, `7`, `513` (twice), `519`,
+`839`, `4063`, `10207`, `12255` — bit 1 is set **if and only if** `PERM_FILES`
+(4) is set. It has no checkbox, so the server sets it alongside "Get captured
+footage".
+
+**Demonstrated by isolation, not merely correlation.** Two cameras on the same
+account differing by exactly one checkbox:
+
+| Camera | Checkboxes | Mask | bit 1 |
+|---|---|---|---|
+| Driveway | Get live video and images | `1` | clear |
+| Back Patio | Get live video and images **+ Get captured footage** | `7` | **set** |
+
+Ticking the single "Get captured footage" box flips **two** bits — bit 2 and
+bit 1 — so the coupling is causal within this server's behaviour rather than an
+artifact of which accounts happened to be sampled.
+
+Its meaning remains unknown, and it stays unnamed in `const.py`: an exact
+coupling is not a definition, and naming it would assert more than has been
+observed. Decoding is unaffected either way — unknown bits are ignored by design
+and the raw mask is retained on `Camera.permissions`.
 
 Decoding is unaffected: unknown bits are ignored by design and the raw mask is
 retained on `Camera.permissions`, so a consumer can test bit 1 deliberately.
@@ -1313,6 +1330,11 @@ The inventory's scoping predicate is `PERM_LIVEVIDEO` specifically, **not**
 download captures from, or speak through is invisible unless live video is also
 granted.
 
+**Confirmed by a controlled change.** Back Patio, granted "Get captured footage"
+only, was absent from the inventory. Ticking "Get live video and images" on that
+same camera, for that same account, made it appear immediately as mask `7`. One
+checkbox is the difference between a camera being manageable and being invisible.
+
 **Project decision (DW-5, 2026-08-30): live video is a hard prerequisite.** The
 library reports the server's rule rather than working around it via
 `++camStatus`. NFR-9's least-privileged account must therefore include live video
@@ -1320,11 +1342,15 @@ on every camera the integration is expected to manage.
 
 ### 5.20.8 Confidence
 
-Three cameras were confirmed by direct isolation (`1`, `513`, `4063`). The other
-seven mappings could not be isolated — those cameras are invisible for want of
-live video, per 5.20.7 — but the *set* is confirmed by arithmetic: all ten boxes
+Four cameras were confirmed by direct isolation (`1`, `7`, `513`, `4063`), two of
+them differing by a single checkbox. The remaining six mappings could not be
+isolated — those cameras are invisible for want of live video, per 5.20.7, which
+is itself the finding — but the *set* is confirmed by arithmetic: all ten boxes
 checked yields exactly the sum of the ten assumed values plus bit 1. A wrong
 individual assignment would break that sum unless two errors cancelled exactly.
+
+Any of the six can be isolated on demand by ticking "Get live video and images"
+alongside the permission under test, exactly as Back Patio was.
 
 **Not a finding:** a camera's mask was observed changing between two reads
 (`9695` → `10207`). This was concurrent editing in the account editor, not

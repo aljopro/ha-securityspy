@@ -191,5 +191,7 @@ resolution: Documented 2026-08-30 in `securityspy-6.21-verification.md` §5.20.4
   and §4.1's "set on live cameras" claim is marked superseded in place. The bit
   stays unnamed in `const.py`: its correlation is exact but its meaning is still
   unknown, and naming it would assert more than has been observed. Decoding is
-  unaffected either way.
+  unaffected either way. Upgraded from correlation to isolation on 2026-08-30:
+  Back Patio and Driveway differ by exactly the "Get captured footage" checkbox,
+  and their masks are 7 and 1 -- one box flips both bit 2 and bit 1.
 status: documented
