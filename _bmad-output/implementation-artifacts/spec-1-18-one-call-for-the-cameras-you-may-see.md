@@ -2,11 +2,13 @@
 title: "Story 1.18: One call for the cameras you may see, in their current state"
 type: 'feature'
 created: '2026-08-29'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
+final_revision: 'PENDING'
 context: ['{project-root}/_bmad-output/planning-artifacts/research/verification-gaps.md']
 warnings: [oversized]
+baseline_revision: '816ee634a3a16d48929ab8f8551e8457e669b9af'
 ---
 
 <intent-contract>
@@ -54,12 +56,12 @@ warnings: [oversized]
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `aiosecurityspy/src/aiosecurityspy/client.py` -- add the permission-scoped camera accessor with current state -- one call for "which cameras may I see, and how are they right now".
-- [ ] `aiosecurityspy/src/aiosecurityspy/client.py` -- add a health-refresh path that does not re-read `++systemInfo` -- the coordinator polls on a cycle and a 27 KB read per cycle is not viable.
-- [ ] `aiosecurityspy/src/aiosecurityspy/models.py` -- intersect status against membership as a pure function, discarding non-members -- data that never enters the result cannot leak from a log or a diagnostics dump.
-- [ ] `aiosecurityspy/src/aiosecurityspy/models.py` -- add capability predicates that separate permission from liveness -- the mask changes with camera state, so conflating them would make an unplugged camera look forbidden.
-- [ ] `aiosecurityspy/tests/` -- cover every matrix row, above all the restricted-account case asserting the other ten cameras appear in **no** returned value and in **no** log record -- this is the row that protects story 2.7.
-- [ ] `aiosecurityspy/docs/securityspy-openapi.yaml` + `CHANGELOG.md` -- keep the description and release notes in step (AD-19).
+- [x] `aiosecurityspy/src/aiosecurityspy/client.py` -- add the permission-scoped camera accessor with current state -- one call for "which cameras may I see, and how are they right now".
+- [x] `aiosecurityspy/src/aiosecurityspy/client.py` -- add a health-refresh path that does not re-read `++systemInfo` -- the coordinator polls on a cycle and a 27 KB read per cycle is not viable.
+- [x] `aiosecurityspy/src/aiosecurityspy/models.py` -- intersect status against membership as a pure function, discarding non-members -- data that never enters the result cannot leak from a log or a diagnostics dump.
+- [x] `aiosecurityspy/src/aiosecurityspy/models.py` -- add capability predicates that separate permission from liveness -- the mask changes with camera state, so conflating them would make an unplugged camera look forbidden.
+- [x] `aiosecurityspy/tests/` -- cover every matrix row, above all the restricted-account case asserting the other ten cameras appear in **no** returned value and in **no** log record -- this is the row that protects story 2.7.
+- [x] `aiosecurityspy/docs/securityspy-openapi.yaml` + `CHANGELOG.md` -- keep the description and release notes in step (AD-19).
 
 **Acceptance Criteria:**
 - Given an account permitted one camera of eleven, when the camera list is requested, then exactly one camera is returned and no other camera's number appears in any returned value or log record.
@@ -68,7 +70,35 @@ warnings: [oversized]
 
 ## Spec Change Log
 
+- **2026-08-29 -- implemented.** Added `SecuritySpyClient.async_get_visible_cameras()`
+  (composes `async_get_server_info()` + `async_get_camera_status()`) and
+  `async_refresh_camera_status(server_info)` (camStatus-only refresh) to `client.py`;
+  added the pure `visible_camera_views()` intersection and the `CameraView` value object,
+  plus `Camera.can_receive_audio` / `Camera.can_send_audio` liveness-vs-permission
+  predicates, to `models.py`. Non-member `camStatus` rows are discarded at the point of
+  receipt and never logged by number (only a discard count is logged). Disabled and
+  de-permissioned cameras are indistinguishable by construction -- both are absent from
+  `ServerInfo.cameras` and so absent from the result. Updated
+  `docs/securityspy-openapi.yaml` (`++systemInfo`/`++camStatus` quirks now record the G8
+  permission-scoping inversion) and `CHANGELOG.md` (AD-19). New tests in
+  `tests/test_client.py` and `tests/test_models.py` cover every I/O matrix row, including
+  the restricted-account no-leak case, the unknown-status-row discard, the health-refresh
+  single-call case, and the offline-camera audio-predicate distinction. `pytest`, `ruff
+  check`/`format --check`, `mypy --strict src` (and `src tests`), and the OpenAPI
+  validator all pass.
+
 ## Review Triage Log
+
+### 2026-08-29 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 3 (low 3, medium 0, high 0)
+- defer: 0
+- reject: 9
+- addressed_findings:
+  - `[low]` `[patch]` `visible_camera_views` discard count was computed from a number-deduped dict, undercounting raw dropped rows when duplicate camera numbers appear in a `++camStatus` payload; rewrote the loop to count discards from the raw `statuses` iterable directly (`models.py`).
+  - `[low]` `[patch]` `test_visible_cameras_unknown_status_row_is_discarded_and_only_counted` asserted `"99" not in combined` over all captured log records (including transport logs that legitimately contain digits), inconsistent with the adjacent restricted-account test's careful logger-name filtering; aligned it to filter to `aiosecurityspy.models` records first.
+  - `[low]` `[patch]` No test exercised the fully-empty-`++camStatus`-response case (all members present, none statused); added `test_visible_camera_views_empty_statuses_returns_all_members_unstatused`.
 
 ## Design Notes
 
@@ -87,3 +117,21 @@ The point of the story, in one line: **the consumer should be able to ask "which
 
 **Manual checks (if no CLI):**
 - Against a live server with an account permitted a single camera, confirm the accessor returns that camera alone, and that a debug-level run mentions no other camera number.
+
+## Auto Run Result
+
+**Summary:** Added a permission-scoped "which cameras may this account see, and how are they now?" accessor to `aiosecurityspy`, closing research gap G8 (`++camStatus` is not permission-scoped; `++systemInfo` is the only membership surface). A disabled camera and a de-permissioned camera are indistinguishable in the result, by design.
+
+**Files changed:**
+- `aiosecurityspy/src/aiosecurityspy/client.py` -- `async_get_visible_cameras()` (composes both reads) and `async_refresh_camera_status(server_info)` (camStatus-only cheap poll).
+- `aiosecurityspy/src/aiosecurityspy/models.py` -- `CameraView` frozen pairing, pure `visible_camera_views()` intersection, `Camera.can_receive_audio`/`can_send_audio` liveness-vs-permission predicates.
+- `aiosecurityspy/src/aiosecurityspy/__init__.py` -- exported the two new public names.
+- `aiosecurityspy/docs/securityspy-openapi.yaml` -- documented the G8 scoping asymmetry on both endpoints.
+- `aiosecurityspy/CHANGELOG.md` -- `[Unreleased] > Added` entries.
+- `aiosecurityspy/tests/test_client.py`, `aiosecurityspy/tests/test_models.py` -- coverage for every I/O matrix row plus the review-driven additions below.
+
+**Review findings breakdown:** 3 patches applied (all low severity: a discard-count-undercount bug in `visible_camera_views` when duplicate `++camStatus` rows target a dropped camera, a fragile/inconsistent log-scoping assertion in one test, and a missing empty-`++camStatus`-response test), 0 deferred, 9 rejected as noise or already-documented behavior (see Review Triage Log for detail -- notably: sequential-read TOCTOU, debug-only log level, `CameraView` lacking runtime-enforced construction, stale-`server_info` behavior in the refresh path -- all consistent with the spec's stated design and existing module conventions).
+
+**Verification:** `uv run pytest` (949 passed), `uv run ruff check .` and `uv run ruff format --check .` (clean), `uv run mypy --strict src` (clean), OpenAPI validator (no output/passed) -- all re-run after the review patches and all green.
+
+**Residual risks:** None blocking. Noted-but-rejected items worth future attention if priorities shift: `CameraView`'s membership invariant is documentation-only, not enforced by a constructor guard; `async_refresh_camera_status` trusts caller-supplied `server_info` freshness with no staleness signal.
