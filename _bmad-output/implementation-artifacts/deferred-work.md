@@ -122,3 +122,49 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-16-mode-selects-which-capture-modes-a-write-targets.md`
   summary: This story ships as a breaking pre-1.0 change (`async_set_camera_arming` now treats its capture modes as the set a write targets and raises `ValueError` on an all-false set) with no semver-bump note or manifest.json pin update, matching the 1.13 and 1.15 precedent.
   evidence: The spec's Always clause says "the version bump, the changelog and the `manifest.json` pin move together (AD-19)", but `pyproject.toml` still shows `0.1.0` and `custom_components/securityspy/manifest.json` still pins `aiosecurityspy==0.1.0`; bumping now would pin a version that is not yet on PyPI. A consumer relying on the old all-false call was relying on a silent no-op (`200 OK`, nothing applied), so the break is safe for real callers but must be called out deliberately. Deferred to the first-release pass, exactly as stories 1.13 and 1.15's equivalent deferrals were handled.
+
+### DW-5: `++systemInfo` scopes its inventory to PERM_LIVEVIDEO, so a user with non-video rights sees no cameras
+
+origin: live verification against SecuritySpy 6.21, 2026-08-30
+location: `aiosecurityspy/src/aiosecurityspy/client.py` (`async_get_server_info`,
+`async_get_visible_cameras`), `epics.md` Story 2.7, FR-28, NFR-9
+source_spec: `spec-1-18-one-call-for-the-cameras-you-may-see.md`
+severity: high
+reason: Measured with a per-camera-custom-permissions account across all eleven
+  cameras, each granted a different single permission. Only the three cameras
+  with "Get live video and images" appeared in `++systemInfo`. Cameras granted
+  camera control (PTZ), trigger, set-camera-settings, get-captured-footage,
+  delete-captured-footage, set-PTZ-presets or send-live-audio were absent from
+  the inventory entirely, despite holding real permissions the API will honour.
+  `async_get_visible_cameras()` is documented as answering "which cameras may
+  this account see", and story 1.18 treats `++systemInfo` as the only
+  permission-scoped inventory surface -- but the scoping predicate is live video
+  specifically, not "holds any permission". The consequence lands on FR-28 and
+  story 2.7: a least-privileged account of exactly the kind NFR-9 requires us to
+  document -- arm/disarm plus capture access, no live video -- yields an
+  integration with zero entities, silently. Every visible camera decoded exactly
+  against the UI checkboxes, so this is not a decoding fault; the inventory
+  endpoint itself is narrower than the permission model. Needs a decision before
+  story 2.7 is written: either document live video as a hard prerequisite for
+  the integration, or find a second inventory surface (`++camStatus` returns
+  every camera to any authenticated account) and reconcile the two.
+status: open
+
+### DW-6: permission bit 1 (value 2) is set by the server alongside PERM_FILES and is not user-assignable
+
+origin: live verification against SecuritySpy 6.21, 2026-08-30
+location: `aiosecurityspy/src/aiosecurityspy/const.py`,
+`_bmad-output/planning-artifacts/research/securityspy-api-reference.md` section 9
+severity: low
+reason: The per-camera permissions UI exposes exactly ten checkboxes and none of
+  them is bit 1. A camera with all ten checked reports 4063, while those ten bits
+  sum to 4061 -- the difference is bit 1. Across seven independently observed
+  masks (1, 513, 519, 839, 4063, 10207, 12255) bit 1 is set if and only if
+  PERM_FILES (4) is set, so the server appears to set it automatically alongside
+  "Get captured footage". `securityspy-6.21-verification.md` section 4.1
+  currently records it as "set on live cameras and named nowhere", which the
+  Driveway camera disproves: live video only, mask 1, bit 1 clear. Decoding is
+  unaffected -- unknown bits are ignored by design and the raw mask is retained
+  on the model -- so this is a documentation correction, plus the option of
+  naming the bit now that its meaning is constrained.
+status: open
