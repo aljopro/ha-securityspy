@@ -354,6 +354,12 @@ about all of them and telling them apart would require guessing from an ambiguou
   unavailable per FR-30, until the next reload removes it.
 - The integration never deletes a Home Assistant device of its own accord; a device the user
   no longer wants is theirs to remove, and recorder history is not destroyed on their behalf.
+- **The user is given the means to remove one.** `async_remove_config_entry_device` is
+  implemented, enabling the delete button on the device page. This is the path Home Assistant's
+  `stale-devices` rule prescribes for an integration that cannot be certain a device is gone —
+  and this one cannot: absence carries three causes and two of them (disabled, de-permissioned)
+  are transient and reversible by someone else. Auto-removal, as integrations with an
+  unambiguous device list do, would destroy history on a change the user may undo minutes later.
 - No camera absent from the inventory is created for any reason, including a status poll that
   still reports it.
 
