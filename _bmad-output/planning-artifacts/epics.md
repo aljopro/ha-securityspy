@@ -1414,13 +1414,31 @@ So that I understand why a camera is armed without being able to break my schedu
 **When** a user attempts to change the schedule
 **Then** no control permits it
 
-### Story 6.4: Enable and disable a camera
+### Story 6.4: Enable and disable a camera — **NOT PLANNED (2026-08-29)**
 
-As a Home Assistant user,
-I want to enable and disable a camera in SecuritySpy from Home Assistant,
-So that I can take a camera out of service without opening the Mac app. *(FR-16)*
+> **Decision (Jensen, 2026-08-29): Home Assistant will not disable a camera.** The control
+> cannot work, and the reason is structural rather than a matter of effort.
+>
+> Disabling a camera removes it from `++systemInfo`, which is the only permission-scoped
+> surface and therefore the integration's membership list (gap G8). Visibility is a single
+> state: a camera that is disabled and a camera the account may not see are treated
+> identically, because Home Assistant has one thing to say about both — *not currently
+> visible*. So the moment the control is used, the camera leaves the inventory, its device's
+> entities go unavailable — **and the switch that would re-enable it is one of those
+> entities.** The user could disable from Home Assistant and never re-enable there, which
+> defeats this story's own stated purpose of not opening the Mac app.
+>
+> It also sits on the wrong side of AD-20's boundary: taking a camera out of service is
+> SecuritySpy administration, not home automation. The integration discovers what exists and
+> interacts with it.
+>
+> **Not deleted, because the reasoning is worth keeping.** Arming and disarming (Story 6.1)
+> remain the supported way to stop a camera capturing, and unlike disabling they are
+> reversible from Home Assistant because the camera stays visible throughout. **FR-16 is
+> superseded**; the acceptance criteria below are retained only as a record of what was
+> intended.
 
-**Acceptance Criteria:**
+**Acceptance Criteria (superseded — retained for the record):**
 
 **Given** a configured camera
 **When** its device is viewed

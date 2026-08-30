@@ -108,6 +108,9 @@ development_status:
   6-1-arm-and-disarm-each-mode-independently: backlog
   6-2-control-state-follows-the-server: backlog
   6-3-see-which-schedule-governs-a-camera: backlog
+  # 6-4 is NOT PLANNED (2026-08-29): disabling removes the camera from the
+  # permission-scoped inventory, so the control would disable its own switch.
+  # See epics.md Story 6.4. Arming (6.1) is the reversible alternative.
   6-4-enable-and-disable-a-camera: backlog
   6-5-choose-which-classes-cause-recording: backlog
   6-6-adjust-per-class-sensitivity: backlog
