@@ -1,5 +1,5 @@
 # generated: 2026-08-09T22:17:18-05:00
-# last_updated: 2026-08-29T21:35:15-05:00
+# last_updated: 2026-08-30T00:00:00-05:00
 # project: ha-securityspy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,14 +41,14 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-09T22:17:18-05:00
-last_updated: 2026-08-09T22:17:18-05:00
+last_updated: 2026-08-30T00:00:00-05:00
 project: ha-securityspy
 project_key: NOKEY
 tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-publishable-library-skeleton: done
   1-2-authenticated-client-with-injected-session: done
   1-3-event-stream-client-with-cr-framing-and-heartbeat: done
@@ -65,10 +65,10 @@ development_status:
   1-14-a-media-401-can-mean-permission-not-bad-credentials: done
   1-15-capture-size-is-megabytes-and-fractional: done
   1-16-mode-selects-which-capture-modes-a-write-targets: done
-  1-17-redact-secrets-and-identifying-detail: ready-for-dev
-  1-18-one-call-for-the-cameras-you-may-see: ready-for-dev
-  epic-1-retrospective: optional
-  epic-2: backlog
+  1-17-redact-secrets-and-identifying-detail: done
+  1-18-one-call-for-the-cameras-you-may-see: done
+  epic-1-retrospective: done
+  epic-2: in-progress
   2-1-add-a-securityspy-server-through-the-ui: done
   2-2-connect-over-https-with-a-verification-toggle: done
   2-3-cameras-appear-as-devices-under-one-server-hub: backlog
@@ -122,3 +122,105 @@ development_status:
   7-3-verify-bronze-in-ci-and-cut-the-release: backlog
   7-4-reach-silver-then-announce: backlog
   epic-7-retrospective: optional
+
+action_items:
+  - epic: 1
+    ref: "P1"
+    action: "Supply both web-client HTML and a HAR capture as evidence for any story decoding an undocumented wire format; record the rule in the research docs."
+    owner: "Jensen"
+    status: open
+  - epic: 1
+    ref: "P2"
+    action: "No decoding story is marked done on author-written fixtures alone -- every decoding claim cites a captured real-server payload."
+    owner: "Amelia"
+    status: open
+  - epic: 1
+    ref: "P3"
+    action: "Do not dispatch a consumer epic's stories against a library surface not yet verified against a live server."
+    owner: "Winston"
+    status: open
+  - epic: 1
+    ref: "R1"
+    action: "Run an independent follow-up review on story 1.5 (episode reducer) -- highest risk, load-bearing for Epic 5."
+    owner: "Jensen"
+    status: open
+  - epic: 1
+    ref: "R2"
+    action: "Run follow-up reviews on stories 1.3 and 1.2; close DW-1."
+    owner: "Jensen"
+    status: open
+  - epic: 1
+    ref: "R3"
+    action: "Run follow-up reviews on stories 1.7, 1.8, 1.10, 1.11 and 1.16; close DW-3 and DW-4."
+    owner: "Jensen"
+    status: open
+  - epic: 1
+    ref: "D1"
+    action: "Add stories 1.14-1.18 to epics.md Epic 1 and regenerate epic-1-context.md so planning artifacts match the 18 stories delivered."
+    owner: "Paige"
+    status: open
+  - epic: 1
+    ref: "D2"
+    action: "Correct the 10207 permissions-bitmask arithmetic in research/securityspy-api-reference.md section 9."
+    owner: "Amelia"
+    status: open
+  - epic: 1
+    ref: "D3"
+    action: "Add a repository-root README.md; hacs.json sets render_readme true and no README exists."
+    owner: "Paige"
+    status: open
+  - epic: 1
+    ref: "T1"
+    action: "Publish aiosecurityspy 0.2.0 to PyPI via the trusted-publisher workflow; unblocks DW-2 and real HACS installs."
+    owner: "Jensen"
+    status: open
+  - epic: 1
+    ref: "T2"
+    action: "Close DW-2: drop [tool.uv.sources], delete the in-tree aiosecurityspy/ subtree, consume the published package (AD-14). After T1."
+    owner: "Amelia"
+    status: open
+  - epic: 1
+    ref: "T3"
+    action: "Add repository-root CI for the integration: pytest with the 100% config-flow coverage gate, ruff, mypy, hassfest and the HACS Action."
+    owner: "Amelia"
+    status: open
+  - epic: 1
+    ref: "T4"
+    action: "Pin actions/checkout and astral-sh/setup-uv to commit SHAs, especially in publish.yml which holds id-token write."
+    owner: "Amelia"
+    status: open
+  - epic: 1
+    ref: "T5"
+    action: "Fix test_settings_payload_is_never_logged_at_any_level -- caplog.at_level(0) is NOTSET so the test passes vacuously."
+    owner: "Murat"
+    status: open
+  - epic: 1
+    ref: "T6"
+    action: "Migrate off aiohttp.BasicAuth and the auth= kwarg to an explicit Authorization header via encode_basic_auth()."
+    owner: "Winston"
+    status: open
+  - epic: 1
+    ref: "T7"
+    action: "Decide the redirect/credential policy: aiohttp re-sends auth= across a cross-host redirect and nothing asserts it does not reach a third party."
+    owner: "Winston"
+    status: open
+  - epic: 1
+    ref: "T8"
+    action: "Settle MIN_SERVER_VERSION against the live server (PRD Open Q8); the (6,0) assumption is enforced as a hard rejection."
+    owner: "Jensen"
+    status: open
+  - epic: 1
+    ref: "T9"
+    action: "Settle ServerInfo.uuid defaulting to empty string -- it becomes a Home Assistant unique_id, so two uuid-less servers collide."
+    owner: "Winston"
+    status: open
+  - epic: 1
+    ref: "T10"
+    action: "Confirm ++ssSetSchedule tolerates override=-1, the default on the most common arming call, or omit it when unchanged."
+    owner: "Jensen"
+    status: open
+  - epic: 1
+    ref: "T11"
+    action: "Record semver/CHANGELOG guidance for the breaking pre-1.0 changes in stories 1.13 and 1.15 before the first release."
+    owner: "Paige"
+    status: open
