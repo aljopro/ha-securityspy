@@ -233,6 +233,35 @@ Given remembered membership, both disappearances become deterministic:
 Note both known cases lead to the same action, so the discriminator matters for what the user
 is *told*, not for what is done.
 
+### The unpermitted rows must not survive the boundary
+
+`++camStatus` discloses the existence, number, and live health of **every** camera on the
+server to any authenticated account (G8). The integration cannot avoid receiving that: it needs
+`camStatus` as the cheap health poll and as the enabled discriminator above. So the rows arrive
+whether or not they are wanted.
+
+`aiosecurityspy` is right to return all of them — it models the API faithfully (AD-2), holds no
+state, and has no membership set to filter against. **The obligation therefore sits at the
+integration boundary, and it is stronger than "do not create entities for them".** Under the
+widened AD-13, the existence, numbering and health of cameras the account may not see is
+precisely the kind of detail that must not reach a shareable artifact. So the non-member rows
+must be **discarded at the point of receipt** — before they enter `SecuritySpyData` (AD-15),
+before any debug log, and before any diagnostics dump — not merely ignored when building
+entities. Data that never enters the container cannot leak from it.
+
+Concretely, when epic 2 wires the poll:
+
+- intersect `camStatus` against the `++systemInfo` membership set immediately, per G8;
+- drop the non-member rows there, rather than carrying them and filtering later;
+- never log a non-member camera number, even at debug — a count is enough to diagnose a
+  mismatch between the two surfaces;
+- treat "the two surfaces disagree" as expected, not as an error worth logging in detail.
+
+**Status: no live exposure.** The integration does not call `async_get_camera_status` anywhere
+today, so nothing leaks now. The library's only related debug lines report a skipped entry's
+index or its unusable camera number, which is diagnosable and minimal. This is a requirement for
+epic 2's poll, recorded before the code exists rather than after.
+
 ### This is a gap in AD-17
 
 AD-17 computes availability from three causes: server unreachable, camera offline via the
