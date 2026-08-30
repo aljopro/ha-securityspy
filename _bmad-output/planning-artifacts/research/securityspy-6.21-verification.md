@@ -113,9 +113,16 @@ to the undocumented auth tokens in §1b.
 it is a **negative** permission — set means *deny* — so it must never be fed through a
 "does this camera grant X" helper that assumes set-means-allow.
 
-**Bit 1 (value 2) remains unexplained.** It is set on all 11 live cameras
-(`permissions: 839` = bits 0,1,2,6,8,9) but is named neither in `script.js` nor in the
-account editor. Treat as reserved; do not assign it a meaning.
+**Bit 1 (value 2) remains unnamed, but is no longer unexplained.**
+
+> ⚠️ **Superseded by §5.20.4.** The claim that it is "set on all 11 live cameras" was
+> an artifact of reading only accounts that also held `PERM_FILES` — the sample mask
+> quoted here, `839`, includes bit 2. Measured 2026-08-30 against a per-camera account:
+> the Driveway camera, granted live video **only**, reports mask `1` with bit 1 **clear**.
+> Across eight observed masks bit 1 is set *iff* `PERM_FILES` (4) is set, so it tracks
+> captured-footage access, not live video. Still unnamed and still not user-assignable —
+> there is no checkbox for it — so continue to treat it as reserved rather than
+> assigning it a meaning.
 
 ### 4.2 §8.1 trigger key names are wrong in one place, incomplete in another
 
@@ -1192,3 +1199,134 @@ Both unknowns that would have become Block If entries are resolved:
 3. **Is `enabled` readable from `++settings-cameras` JSON?** Could not confirm — the probe
    account gets 403. `++camStatus` exposes it regardless, which is the better read path.
 4. **`schedule-preset-list`** was empty; its element shape is unverified.
+
+---
+
+## 5.20 The permission bitmask, read off the account editor itself ⭐⭐⭐
+
+**Date:** 2026-08-30. **Method:** a web-server account set to *Per-camera custom
+permissions*, given a **different single permission on each of eleven cameras**,
+then read back through `++systemInfo` and compared bit for bit against the
+account editor's own checkboxes. This is the first time the mask has been read
+against a known-good ground truth rather than inferred from `js/script.js`.
+
+### 5.20.1 The editor exposes exactly ten checkboxes
+
+The *Per-camera custom permissions* editor lists ten permissions, and no more.
+Their labels are the server's own wording, which supersedes the reference doc's
+paraphrases:
+
+| # | Checkbox label (verbatim) | Constant | Bit | Value |
+|---|---|---|---|---|
+| 1 | Get live video and images | `PERM_LIVEVIDEO` | 0 | 1 |
+| 2 | Get live audio | `PERM_AUDIORCV` | 9 | 512 |
+| 3 | Send live audio (two-way audio) | `PERM_AUDIOSND` | 11 | 2048 |
+| 4 | Change schedules | `PERM_SCHED` | 7 | 128 |
+| 5 | Get captured footage | `PERM_FILES` | 2 | 4 |
+| 6 | Delete captured footage | `PERM_FILEDEL` | 3 | 8 |
+| 7 | Camera Control (PTZ) *(tooltip: "Allow Pan/Tilt/Zoom control")* | `PERM_CAMCONTROL` | 6 | 64 |
+| 8 | Set PTZ preset positions | `PERM_PTZSET` | 8 | 256 |
+| 9 | Trigger motion detection | `PERM_TRIGGER` | 10 | 1024 |
+| 10 | Set camera settings | `PERM_SETTINGS` | 4 | 16 |
+
+**These ten sum to 4061.** A camera with all ten checked reports **4063**.
+
+### 5.20.2 Four bits exist that the editor cannot set
+
+| Bit | Value | Name | Observed behaviour |
+|---|---|---|---|
+| 1 | 2 | *(unnamed)* | Set **iff** `PERM_FILES` is set. No checkbox. See 5.20.4. |
+| 5 | 32 | *(unnamed)* | Never observed set, on any account or camera. |
+| 12 | 4096 | `PERM_NODOWNLOAD` | Never observed set. Deny-shaped (set = *hide* downloads). |
+| 13 | 8192 | `PERM_PUSH_STREAMS` | Set **only** under the *Administrator* tier — see 5.20.5. |
+
+### 5.20.3 The premade tiers, decoded
+
+The *Permission type* dropdown offers six options: `Live`; `Live, Captures`;
+`Live, Captures, Control`; `Administrator - full access to everything`;
+`Per-camera custom permissions`; `Per-group custom permissions`.
+
+| Tier | Mask | Decodes to |
+|---|---|---|
+| Live | 513 | `live_video`, `audio_receive` |
+| Live, Captures | 519 | `+ files`, `+ bit 1` |
+| Live, Captures, Control | 839 | `+ camera_control`, `+ ptz_preset_set` |
+| Administrator | 10207 / 12255 | everything except `audio_send` / everything |
+
+**"Control" does not include "Change schedules".** The `Live, Captures, Control`
+tier grants `camera_control` (64) and `ptz_preset_set` (256) but leaves `schedule`
+(128) and `settings` (16) clear on every camera. Treating camera control and
+arming as independent permissions is therefore correct, and a consumer can offer
+PTZ without also offering arming.
+
+### 5.20.4 Bit 1 rides along with `PERM_FILES`
+
+§4.1 of this document previously recorded bit 1 as *"set on live cameras and
+named nowhere."* **That is wrong.** The Driveway camera, granted live video and
+nothing else, reports mask `1` with bit 1 clear.
+
+Across eight independently observed masks — `1`, `513` (twice), `519`, `839`,
+`4063`, `10207`, `12255` — bit 1 is set **if and only if** `PERM_FILES` (4) is
+set. It has no checkbox, so the server sets it alongside "Get captured footage".
+Its meaning is unknown; its correlation is exact.
+
+Decoding is unaffected: unknown bits are ignored by design and the raw mask is
+retained on `Camera.permissions`, so a consumer can test bit 1 deliberately.
+
+### 5.20.5 `PERM_PUSH_STREAMS` is an Administrator-only grant
+
+Bit 13 is set on both Administrator masks (`10207`, `12255`) and on **none** of
+the others — including a per-camera account with all ten boxes checked (`4063`).
+It is not per-camera assignable, and "all permissions" in the editor is strictly
+weaker than Administrator.
+
+### 5.20.6 Administrator masks vary by camera hardware, not by rights
+
+Under one Administrator account across eleven cameras, only two distinct masks
+appear: `12255` on six cameras and `10207` on five. The difference is exactly
+`audio_send` (2048) — the six are the cameras with speakers. With rights held
+constant, the mask still varies, confirming it is **rights intersected with
+camera capability** rather than rights alone.
+
+### 5.20.7 ⚠️ `++systemInfo` admits a camera only if the account has live video
+
+The single most consequential finding. Of the eleven cameras, each holding one
+real permission, **only the three granted "Get live video and images" appeared
+in `++systemInfo` at all**:
+
+| Camera | Granted | In inventory? |
+|---|---|---|
+| Driveway | live video | ✅ mask `1` |
+| Front Porch | live video + live audio | ✅ mask `513` |
+| Kitchen | all ten | ✅ mask `4063` |
+| Front Yard | send live audio | ❌ absent |
+| Back Patio | get captured footage | ❌ absent |
+| Music Room | delete captured footage | ❌ absent |
+| North Yard | set PTZ preset positions | ❌ absent |
+| Living Room | Camera Control (PTZ) | ❌ absent |
+| Ada's Room | live audio + set camera settings | ❌ absent |
+| Peyton's Room | trigger motion detection | ❌ absent |
+| Back Yard | nothing | ❌ absent (correct) |
+
+The inventory's scoping predicate is `PERM_LIVEVIDEO` specifically, **not**
+"holds any permission". A camera the account may pan, trigger, configure,
+download captures from, or speak through is invisible unless live video is also
+granted.
+
+**Project decision (DW-5, 2026-08-30): live video is a hard prerequisite.** The
+library reports the server's rule rather than working around it via
+`++camStatus`. NFR-9's least-privileged account must therefore include live video
+on every camera the integration is expected to manage.
+
+### 5.20.8 Confidence
+
+Three cameras were confirmed by direct isolation (`1`, `513`, `4063`). The other
+seven mappings could not be isolated — those cameras are invisible for want of
+live video, per 5.20.7 — but the *set* is confirmed by arithmetic: all ten boxes
+checked yields exactly the sum of the ten assumed values plus bit 1. A wrong
+individual assignment would break that sum unless two errors cancelled exactly.
+
+**Not a finding:** a camera's mask was observed changing between two reads
+(`9695` → `10207`). This was concurrent editing in the account editor, not
+capability fluctuation. A six-sample stability check over twelve seconds found no
+drift. The mask should be treated as configuration, not telemetry.

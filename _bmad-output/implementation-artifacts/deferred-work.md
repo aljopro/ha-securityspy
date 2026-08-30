@@ -148,7 +148,27 @@ reason: Measured with a per-camera-custom-permissions account across all eleven
   story 2.7 is written: either document live video as a hard prerequisite for
   the integration, or find a second inventory surface (`++camStatus` returns
   every camera to any authenticated account) and reconcile the two.
-status: open
+decision: **Option 1, taken by Jensen on 2026-08-30.** Live video is a hard
+  prerequisite: a camera is visible, and therefore manageable, only where the
+  configured account holds `PERM_LIVEVIDEO` on it. The library reports the
+  server's rule rather than working around it, and `++camStatus` is not widened
+  to surface cameras `++systemInfo` withheld. Rationale: it matches SecuritySpy's
+  own model, it avoids creating PTZ or arming entities for a camera the user can
+  never see a frame from, and the alternative would leave the integration's
+  entity set disagreeing with what every other SecuritySpy client shows.
+consequences:
+  - `async_get_visible_cameras()` states the rule in its docstring, and
+    `test_live_inventory_is_scoped_to_live_video` fails if a future server admits
+    a camera without live video.
+  - NFR-9's least-privileged-user documentation must require live video on every
+    camera the integration is expected to manage; an account without it yields no
+    entities for that camera, correctly and by design.
+  - Story 2.7 (FR-28) may assume every camera it receives holds live video, and
+    should gate the remaining entity types on the other bits as planned.
+  - Setup should consider telling a user whose account sees zero cameras that
+    live-video permission is the likely cause, rather than reporting an empty
+    server.
+status: resolved-by-decision
 
 ### DW-6: permission bit 1 (value 2) is set by the server alongside PERM_FILES and is not user-assignable
 
@@ -167,4 +187,9 @@ reason: The per-camera permissions UI exposes exactly ten checkboxes and none of
   unaffected -- unknown bits are ignored by design and the raw mask is retained
   on the model -- so this is a documentation correction, plus the option of
   naming the bit now that its meaning is constrained.
-status: open
+resolution: Documented 2026-08-30 in `securityspy-6.21-verification.md` §5.20.4,
+  and §4.1's "set on live cameras" claim is marked superseded in place. The bit
+  stays unnamed in `const.py`: its correlation is exact but its meaning is still
+  unknown, and naming it would assert more than has been observed. Decoding is
+  unaffected either way.
+status: documented

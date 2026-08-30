@@ -620,7 +620,18 @@ From `js/script.js` — decodes the per-camera `permissions` field:
 | `PERM_TRIGGER` | 10 | 1024 | Manually trigger |
 | `PERM_AUDIOSND` | 11 | 2048 | Send audio (two-way talk) |
 
-Observed `10207` = `LIVEVIDEO + FILES + FILEDEL + CAMCONTROL + SCHED + AUDIORCV + TRIGGER + AUDIOSND`.
+Observed `10207` = `LIVEVIDEO(1) + bit1(2) + FILES(4) + FILEDEL(8) + SETTINGS(16) +
+CAMCONTROL(64) + SCHED(128) + PTZSET(256) + AUDIORCV(512) + TRIGGER(1024) +
+PUSH_STREAMS(8192)`, which sums exactly to 10207. **`AUDIOSND` (2048) is clear**, and
+`PTZSET` (256) is set.
+
+> ⚠️ This line previously read `LIVEVIDEO + FILES + FILEDEL + CAMCONTROL + SCHED +
+> AUDIORCV + TRIGGER + AUDIOSND`, which sums to 3789, not 10207 — it omitted the three
+> bits the table above also omits (2, 16, 8192) and wrongly included `AUDIOSND`. The bit
+> **table** was right; only this prose was wrong. Corrected 2026-08-30 against the
+> account editor; see `securityspy-6.21-verification.md` §5.20 for the full mapping,
+> including the ten checkbox labels, the four bits the editor cannot set, and the
+> decoded premade tiers.
 
 > ⚠️ **That sum is 3789, not 10207.** See `securityspy-6.21-verification.md` §5.8: 10207 is
 > `1+2+4+8+16+64+128+256+512+1024+8192`, which balances only with the three bits this table

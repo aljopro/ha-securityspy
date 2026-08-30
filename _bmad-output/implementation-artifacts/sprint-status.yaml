@@ -163,7 +163,7 @@ action_items:
     ref: "D2"
     action: "Correct the 10207 permissions-bitmask arithmetic in research/securityspy-api-reference.md section 9."
     owner: "Amelia"
-    status: open
+    status: done
   - epic: 1
     ref: "D3"
     action: "Add a repository-root README.md; hacs.json sets render_readme true and no README exists."
