@@ -360,6 +360,12 @@ about all of them and telling them apart would require guessing from an ambiguou
   and this one cannot: absence carries three causes and two of them (disabled, de-permissioned)
   are transient and reversible by someone else. Auto-removal, as integrations with an
   unambiguous device list do, would destroy history on a change the user may undo minutes later.
+- **Removal is permitted only for a camera absent from the current inventory**, not for any
+  unavailable camera. Unavailability has several causes (FR-30) and only absence means the
+  device will not return by itself: a camera that is merely offline, or every camera while the
+  server is unreachable, is still in the inventory and would be recreated on the next refresh —
+  so deleting it would be a confusing no-op that discards the user's customizations. The
+  removal request is refused for a camera still present, and the refusal is not an error.
 - No camera absent from the inventory is created for any reason, including a status poll that
   still reports it.
 
