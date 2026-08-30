@@ -49,14 +49,15 @@ Don't guess at protocol or architecture decisions; they're written down and a st
 
 ## Non-negotiable architecture decisions
 
-1. **The event stream is never the source of persistent truth** (AD-1). Persistent state derives only from the capture-history poll plane; push may only advance state, never originate it.
-2. **All protocol knowledge lives in `aiosecurityspy`** (AD-2), never in `custom_components/`.
-3. **Identity is server UUID + camera number** (AD-5) and is permanent — never key off address or name.
-4. **Object Class is an open string, never a fixed enum** (AD-9) — labels come from user-trained CoreML models.
-5. **Credentials never reach logs or diagnostics** (AD-13) — SecuritySpy's settings endpoint returns camera passwords in plaintext, so this is a live hazard, not a precaution.
-6. **`hass.data[DOMAIN]` is forbidden** — use `entry.runtime_data` with a typed `ConfigEntry[...]` alias (Bronze `runtime-data` rule, machine-checked by hassfest).
-7. **The coordinator is push-fed with no polling interval** (AD-4) — call `async_set_updated_data()` when the event stream delivers, don't pass `update_interval`.
-8. **`aiosecurityspy` never owns an aiohttp session** — the caller (Home Assistant, or a script) creates and injects it; the library has no `close()`.
+1. **SecuritySpy owns creation; this integration interacts** (AD-20). This is not a second SecuritySpy UI. SecuritySpy defines and creates its objects — cameras, schedules, everything it exposes; Home Assistant discovers them, reads them, and acts on them. Before adding any surface, ask whether it *creates a SecuritySpy object or acts on one that exists* — creation is out by default and takes an AD-20 amendment, never a story-level call.
+2. **The event stream is never the source of persistent truth** (AD-1). Persistent state derives only from the capture-history poll plane; push may only advance state, never originate it.
+3. **All protocol knowledge lives in `aiosecurityspy`** (AD-2), never in `custom_components/`.
+4. **Identity is server UUID + camera number** (AD-5) and is permanent — never key off address or name.
+5. **Object Class is an open string, never a fixed enum** (AD-9) — labels come from user-trained CoreML models.
+6. **Credentials never reach logs or diagnostics** (AD-13) — SecuritySpy's settings endpoint returns camera passwords in plaintext, so this is a live hazard, not a precaution.
+7. **`hass.data[DOMAIN]` is forbidden** — use `entry.runtime_data` with a typed `ConfigEntry[...]` alias (Bronze `runtime-data` rule, machine-checked by hassfest).
+8. **The coordinator is push-fed with no polling interval** (AD-4) — call `async_set_updated_data()` when the event stream delivers, don't pass `update_interval`.
+9. **`aiosecurityspy` never owns an aiohttp session** — the caller (Home Assistant, or a script) creates and injects it; the library has no `close()`.
 
 ## Vocabulary
 

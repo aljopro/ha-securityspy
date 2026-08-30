@@ -748,6 +748,14 @@ Three things occupy adjacent ground, and none occupies this one.
 
 ## 10. Constraints and Guardrails
 
+### 10.0 Ownership boundary — SecuritySpy creates, Home Assistant interacts
+
+**This integration is not a second SecuritySpy UI.** SecuritySpy owns the creation and definition of its objects — cameras, schedules, and everything else it exposes. Home Assistant discovers those objects, reads their state, acts on them, and reflects changes back. It does not create them, define them, or delete them.
+
+Cameras are the settled case and the pattern for the rest: the integration has never had an "add a camera" surface, because adding a camera is something you do in SecuritySpy. Schedules are the same kind of object — assigning an existing one is interaction (FR-12a), defining one is creation and is out.
+
+The test for any proposed surface is not *can the endpoint do it* but **is this creating a SecuritySpy object, or acting on one that already exists?** Creation is out by default; admitting one takes an amendment to AD-20, not a story-level judgment call. This bounds ownership, not ambition — the integration may act on SecuritySpy's objects as richly as the API and the other guardrails allow.
+
 ### 10.1 Safety and Privacy
 
 - The integration holds **no privacy opinion**. Per-Camera-Device arming and Detection Trigger controls are exposed; policy is the user's to compose. Indoor cameras receive no special treatment.
