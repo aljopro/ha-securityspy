@@ -1,5 +1,5 @@
 # generated: 2026-08-09T22:17:18-05:00
-# last_updated: 2026-08-29T16:40:00-05:00
+# last_updated: 2026-08-29T21:35:15-05:00
 # project: ha-securityspy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -61,9 +61,9 @@ development_status:
   1-10-schedule-names-and-camera-enable-write: done
   1-11-permission-denied-is-not-an-authentication-failure: done
   1-12-decode-the-camera-inventory-a-real-server-sends: done
-  1-13-timestamps-use-the-servers-own-timezone: ready-for-dev
-  1-14-a-media-401-can-mean-permission-not-bad-credentials: ready-for-dev
-  1-15-capture-size-is-megabytes-and-fractional: ready-for-dev
+  1-13-timestamps-use-the-servers-own-timezone: done
+  1-14-a-media-401-can-mean-permission-not-bad-credentials: done
+  1-15-capture-size-is-megabytes-and-fractional: done
   1-16-mode-selects-which-capture-modes-a-write-targets: done
   1-17-redact-secrets-and-identifying-detail: ready-for-dev
   epic-1-retrospective: optional
