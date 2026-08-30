@@ -200,6 +200,48 @@ permissions is removed from `camera-list` entirely, and only that configuration 
 bit 1**, and it has no `PERM_FILES`. Consistent with the hypothesis that bit 1 accompanies
 captured-footage access. Still not the isolating test.
 
+## Visibility and enablement are two axes (Jensen, 2026-08-29)
+
+The clean model, which resolves the ambiguity G8 records:
+
+1. **Permission answers *can this account see the camera?*** It is a visibility gate and it
+   decides whether a camera exists in Home Assistant at all.
+2. **`enabled` answers *what state is a visible camera in?*** It is a property of something
+   already visible.
+
+The unresolvable cell in the earlier analysis — absent from `++systemInfo` with
+`camStatus.enabled:false`, meaning either permitted-and-disabled or unpermitted-and-disabled —
+is unresolvable because it is a question that should never be asked. If permission says no,
+the camera does not exist for this account and its enabled state is not our concern.
+
+**The defect is in the API's shape, not the model: SecuritySpy collapses the two axes into one
+signal.** Disabling a camera withdraws it from `++systemInfo`, so a *state change* is expressed
+as a loss of *existence*, on the only permission-scoped surface there is. The integration's job
+is to un-collapse them, and **remembered membership** is what does it — permission was
+established when the camera was first seen in `++systemInfo`, and it does not stop being true
+because the camera was switched off. That is why G8's "keep known devices, mark unavailable"
+is right: it is not a workaround, it is restoring the axis the server flattened.
+
+Given remembered membership, both disappearances become deterministic:
+
+| camera known from a prior `++systemInfo`, now absent | `camStatus.enabled` | meaning |
+|---|---|---|
+| yes | `false` | **disabled** — a state; keep the device, mark unavailable |
+| yes | `true` | **de-permissioned** — a visibility change; keep the device, mark unavailable |
+| never seen | either | not ours — **create nothing** |
+
+Note both known cases lead to the same action, so the discriminator matters for what the user
+is *told*, not for what is done.
+
+### This is a gap in AD-17
+
+AD-17 computes availability from three causes: server unreachable, camera offline via the
+status-poll connected flag, and stream loss. **A camera absent from the inventory is a fourth
+cause and fits none of them** — it is not a server failure, the connected flag is unreadable
+because the camera is not in the permission-scoped payload at all, and no stream is involved.
+Whatever epic 2 and 3 decide, AD-17 needs a fourth layer or an explicit statement that
+inventory absence is handled elsewhere. Recorded as a decision input; not decided here.
+
 ## Open defects found, and their status
 
 | # | Defect | Story | Status |
