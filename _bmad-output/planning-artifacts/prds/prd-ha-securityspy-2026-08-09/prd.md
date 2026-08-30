@@ -313,7 +313,7 @@ State changed in SecuritySpy is reflected in Home Assistant, and vice versa — 
 **Consequences (testable):**
 - An Arm Mode changed in the SecuritySpy application is reflected in Home Assistant without a restart or reload.
 - An Arm Mode changed from Home Assistant is observable in SecuritySpy.
-- The same holds for camera enablement (FR-16), Detection Triggers (FR-17), and sensitivities (FR-18): a change made in SecuritySpy is reflected in Home Assistant within one reconciliation cycle, without a restart.
+- The same holds for Detection Triggers (FR-17) and sensitivities (FR-18): a change made in SecuritySpy is reflected in Home Assistant within one reconciliation cycle, without a restart. (Camera enablement is no longer a control — see FR-16/FR-16a.)
 - Home Assistant does not indefinitely report a control state that contradicts the server's.
 
 #### FR-15: Read-only Arm Schedule visibility
@@ -326,14 +326,36 @@ A Home Assistant user can see which Arm Schedule governs each Arm Mode on a Came
 - No Home Assistant *entity* permits changing it; the only surface that reassigns one is FR-12a's explicit action, and a schedule's definition stays unchangeable from Home Assistant entirely.
 - The readable assignment is what makes FR-12a reversible without Home Assistant storing hidden state.
 
-#### FR-16: Camera enable control
+#### FR-16: Camera enable control — **SUPERSEDED (2026-08-29)**
 
-A Home Assistant user can enable and disable a camera in SecuritySpy.
+**Home Assistant does not enable or disable a camera.** Superseded by FR-16a.
+
+Disabling a camera removes it from `++systemInfo`, the only permission-scoped surface and
+therefore the integration's membership list. A disabled camera is consequently indistinguishable
+from one the account may not see, and both are treated identically (FR-16a). The control could
+therefore only work in one direction: using it would remove the camera, taking the control
+itself with it, and re-enabling would require the Mac app — defeating this requirement's own
+purpose. Taking a camera out of service is also SecuritySpy administration rather than home
+automation, which §*This integration is not a second SecuritySpy UI* already places outside
+scope. Arming and disarming (FR-11/FR-12) remain the supported, reversible way to stop a camera
+capturing, and unlike disabling they keep the camera visible throughout.
+
+#### FR-16a: A camera the account cannot see is not a device
+
+A camera absent from SecuritySpy's permission-scoped inventory — whether disabled, deleted, or
+not permitted to this account — is not surfaced in Home Assistant. Visibility is one state; the
+three causes are deliberately not distinguished, because Home Assistant has one thing to say
+about all of them and telling them apart would require guessing from an ambiguous signal.
 
 **Consequences (testable):**
-- Each Camera Device exposes an enable control reflecting SecuritySpy's enabled state.
-- Disabling in Home Assistant disables the camera in SecuritySpy.
-- A disabled camera's entities behave per FR-30 rather than reporting stale values.
+- A camera absent from the inventory at setup or reload is **not created**: no device, no
+  entities, nothing visible.
+- A camera that leaves the inventory while the integration is running has its entities report
+  unavailable per FR-30, until the next reload removes it.
+- The integration never deletes a Home Assistant device of its own accord; a device the user
+  no longer wants is theirs to remove, and recorder history is not destroyed on their behalf.
+- No camera absent from the inventory is created for any reason, including a status poll that
+  still reports it.
 
 ---
 
@@ -485,6 +507,7 @@ The integration creates only controls the configured SecuritySpy user can actual
 - Arming controls are omitted when the user lacks arming permission; capture-dependent entities are omitted when the user lacks file access.
 - When a capability is omitted for lack of permission, a repair issue names the missing permission.
 - No entity is created that is permanently unavailable due to permissions.
+- A camera absent from the permission-scoped inventory yields no device and no entities at all (FR-16a) — permission gating decides *whether a camera exists here*, before it decides which of its controls exist.
 
 #### FR-29: Reconfiguration
 
@@ -510,6 +533,7 @@ Entities report unavailable when their data cannot be trusted. Realizes UJ-4.
 - When the SecuritySpy Server is unreachable, its entities report unavailable rather than retaining last-known values.
 - When a single camera goes offline while the server remains reachable, only that Camera Device's entities become unavailable.
 - Camera offline is treated as unavailability, not as an error condition requiring user action.
+- When a camera leaves the permission-scoped inventory while running — disabled, deleted, or de-permissioned — its Camera Device's entities report unavailable rather than stale values, and the device is not removed automatically (FR-16a).
 
 #### FR-31: Automatic recovery
 

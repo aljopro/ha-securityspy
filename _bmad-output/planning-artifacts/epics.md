@@ -879,6 +879,12 @@ So that I never build an automation on a number that quietly stopped updating. *
 **Then** all of that entry's entities report unavailable rather than retaining their last-known values
 
 **Given** a reachable server
+**When** a camera leaves SecuritySpy's permission-scoped inventory — disabled, deleted, or de-permissioned
+**Then** that camera device's entities report unavailable rather than stale values
+**And** the device is not removed automatically; a reload simply does not create the camera
+**And** the three causes are not distinguished, because Home Assistant has one thing to say about all of them *(FR-16a)*
+
+**Given** a reachable server
 **When** a single camera goes offline
 **Then** only that camera device's entities become unavailable
 **And** the hub's entities and every other camera's entities are unaffected

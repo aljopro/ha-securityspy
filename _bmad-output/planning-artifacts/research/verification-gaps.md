@@ -192,9 +192,14 @@ permissions is removed from `camera-list` entirely, and only that configuration 
    and never create an entity for a camera absent from it.
 4. **This reopens the §5.12 disappearance problem rather than solving it.** Since membership
    must come from the scoped endpoint, a camera that is disabled *or* de-permissioned vanishes
-   from it. The answer is not to widen membership but to stop deleting: keep known devices and
-   mark them unavailable rather than removing them, which is correct for both causes and leaks
-   neither.
+   from it. **Resolved 2026-08-29 (FR-16a):** the answer is not to widen membership and not to
+   distinguish the causes. Visibility is one state — a camera absent from the inventory is not
+   surfaced. It is **not created** at setup or reload, and if it disappears while running its
+   entities report unavailable until the next reload. The integration never deletes a Home
+   Assistant device of its own accord: that is the user's act, and doing it automatically would
+   destroy recorder history on every transient permission change. Story 6.4 (a Home Assistant
+   enable/disable control) is **not planned** as a direct consequence — the control would remove
+   the camera and take itself with it.
 
 **Incidental G7 evidence:** Driveway at live-video-only reads mask `1` — bit 0 alone, **no
 bit 1**, and it has no `PERM_FILES`. Consistent with the hypothesis that bit 1 accompanies

@@ -91,9 +91,9 @@ Entity modules may import library *types* (dataclasses, exceptions for isinstanc
 
 ### AD-8 — Settings writes are direct partial POSTs [ADOPTED]
 
-- **Binds:** FR-16..FR-18
+- **Binds:** FR-17, FR-18 (FR-16 superseded 2026-08-29; camera enablement is no longer a control)
 - **Prevents:** read-modify-write caching and its lost-update races.
-- **Rule:** Settings-backed controls (enable, Detection Triggers, sensitivities) write a single-key partial POST on state change, verified non-destructive. No settings cache is held for write purposes; state reflects the next poll/echo per FR-14.
+- **Rule:** Settings-backed controls (Detection Triggers, sensitivities) write a single-key partial POST on state change, verified non-destructive. No settings cache is held for write purposes; state reflects the next poll/echo per FR-14.
 
 ### AD-9 — Object Class is open string data, slugged once [ADOPTED]
 
@@ -154,7 +154,8 @@ Entity modules may import library *types* (dataclasses, exceptions for isinstanc
 
 - **Binds:** FR-30, FR-31, all platforms
 - **Prevents:** each platform choosing its own availability definition (stream state vs poll success vs camera flag).
-- **Rule:** Availability is computed in the shared base entities (`entity.py`) from `SecuritySpyData`, nowhere else. (1) Server unreachable — poll plane failing — → all entities of the entry unavailable. (2) A single camera offline (status-poll connected flag) while the server responds → only that Camera Device's entities unavailable, not an error. (3) Stream loss alone does **not** mark entities unavailable — the poll plane still holds truth — but push-derived presence entities (motion, per-class presence) become unavailable via a coordinator stream-health flag, since their liveness cannot be trusted. Platforms never override `available` with their own logic.
+- **Rule:** Availability is computed in the shared base entities (`entity.py`) from `SecuritySpyData`, nowhere else. (1) Server unreachable — poll plane failing — → all entities of the entry unavailable. (2) A single camera offline (status-poll connected flag) while the server responds → only that Camera Device's entities unavailable, not an error. (3) Stream loss alone does **not** mark entities unavailable — the poll plane still holds truth — but push-derived presence entities (motion, per-class presence) become unavailable via a coordinator stream-health flag, since their liveness cannot be trusted. (4) **Camera absent from the permission-scoped inventory** — disabled, deleted, or de-permissioned in SecuritySpy, so no longer in `++systemInfo` — → that Camera Device's entities unavailable. Platforms never override `available` with their own logic.
+- **On the fourth layer (added 2026-08-29, FR-16a).** It is a distinct cause: not a server failure, and the status-poll connected flag of layer 2 is unreadable because the camera is not in the permission-scoped payload at all. The three causes are **deliberately not distinguished** — Home Assistant has one thing to say about all of them, and telling them apart would need an unscoped endpoint and a guess in the direction that leaks. The device is **not removed automatically**: entities go unavailable while running, and a reload simply does not create the camera. Deleting a device is the user's act, not the integration's, and doing it on their behalf destroys recorder history on every transient permission change.
 
 ### AD-18 — Auth-failure escalation has one owner
 
