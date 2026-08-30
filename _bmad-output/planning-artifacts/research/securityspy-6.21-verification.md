@@ -759,7 +759,7 @@ verified by us beyond the `101` and the source read; it stays `client-source`.
 | `/cliplist` | no parameters → `200` `[]` | Empty on this server; shape unknown. |
 | `/dashImage` | `?formData&type1={n}&item1={n}&type2={n}&smooth={n}&width=&height=&date=&dark={0\|1}&{cachebuster}` → `200 image/png` | Server-rendered dashboard graphs. Note the **`formData` sentinel appearing in a GET query string**, and a bare trailing random integer as a cache-buster. |
 
-### 5.15.5 How the UI actually disarms a camera — and why it collides with AD-7 ⚠
+### 5.15.5 How the UI actually disarms a camera — and why it collided with AD-7 ✅ resolved
 
 ```
 /ssSetSchedule?cameraNum=4&schedule=0&override=-1&mode=CMA   → 200 OK
@@ -779,6 +779,14 @@ with `override=-1`. Two things follow:
 express arming"). AD-7 is not wrong about what an override does; it is that the library has no
 operation for the thing the UI's disarm button performs. Epic 6's stories 6.1 and 6.4 cannot
 be built without resolving it, and it is an architecture decision, not an implementation one.
+
+**Resolved 2026-08-29 (Jensen).** AD-7 is split: schedules and overrides are two different
+ideas and one control cannot express both. Arm switches keep writing the transient override
+and never send `schedule=`; a persistent schedule *assignment* is permitted as a separate,
+explicitly invoked operation; schedule *definitions* remain unchangeable from Home Assistant,
+which is what preserved AD-7's original purpose. PRD FR-12 split into FR-12/FR-12a and FR-13
+rewritten to match. Epic 6's 6.1 and 6.4 are unblocked at the decision level; they still wait
+on `aiosecurityspy` growing the assignment method (AD-19: library first).
 
 ### 5.15.6 Cadence and absences
 

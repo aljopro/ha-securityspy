@@ -2,7 +2,7 @@
 title: Home Assistant Integration for SecuritySpy
 status: final
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-08-29
 ---
 
 # PRD: Home Assistant Integration for SecuritySpy
@@ -272,23 +272,38 @@ A Home Assistant automation can save the most recent recording for a Camera Devi
 
 **Functional Requirements:**
 
-#### FR-12: Per-mode arming control
+#### FR-12: Per-mode transient arming control
 
-A Home Assistant user can arm and disarm each Arm Mode independently per Camera Device.
+A Home Assistant user can apply a transient Arm Override to each Arm Mode independently per Camera Device.
+
+> **Split 2026-08-29.** FR-12 originally read "arm and disarm each Arm Mode independently" and carried *both* jobs — the transient one and the persistent one — in a single requirement. SecuritySpy expresses them through two different operations, so this is now FR-12 (transient, override) and FR-12a (persistent, schedule assignment). See AD-7's split.
 
 **Consequences (testable):**
 - Each Camera Device exposes three independent arming controls, one per Arm Mode.
 - Setting one Arm Mode does not alter the other two.
-- All eight combinations of the three modes are expressible.
+- All eight combinations of the three modes are expressible as a write target.
 - Controls are categorized as configuration rather than primary controls.
+- The control's transience is visible, not buried: a user can tell from Home Assistant that the state reverts and, where the server reports it, when.
 
-#### FR-13: Override-only writes
+#### FR-12a: Persistent arming via explicit schedule assignment
 
-Arming from Home Assistant writes the Arm Override and never modifies an Arm Schedule.
+A Home Assistant user can assign an existing SecuritySpy Arm Schedule — including the built-in "Disarmed 24/7" — to each Arm Mode per Camera Device, through an explicitly invoked action.
 
 **Consequences (testable):**
-- After arming and disarming from Home Assistant, the Camera Device's Arm Schedule assignment in SecuritySpy is unchanged.
+- The operation is invoked deliberately (a documented action), never by toggling an entity.
+- Its description states that it changes SecuritySpy's own configuration and persists until changed again.
+- Only schedules SecuritySpy already defines can be assigned; the option list is read from the server, never hardcoded.
+- No Home Assistant surface creates, edits, deletes, or reorders a schedule *definition*.
+- Home Assistant does not record a prior assignment in order to restore it silently: reversal is the same explicit operation, using the assignment the user can read from FR-15.
+
+#### FR-13: Switches write the override; only the explicit action writes a schedule
+
+Arming from a Home Assistant control writes the Arm Override. Only FR-12a's explicitly invoked action assigns an Arm Schedule, and nothing in Home Assistant alters a schedule's definition.
+
+**Consequences (testable):**
+- After using the arming controls in Home Assistant, the Camera Device's Arm Schedule assignment in SecuritySpy is unchanged.
 - No Home Assistant action can create, edit, or delete a SecuritySpy Arm Schedule.
+- A schedule assignment reaches SecuritySpy only from FR-12a's action — never from an entity state change, and never as a side effect of an override write.
 - The transience is stated, not hidden: SecuritySpy's Arm Override is bounded — at most six hours, or until the next scheduled event — after which the Arm Schedule resumes. Documentation and the arming controls' behavior must reflect this rather than implying an indefinite HA-set state.
 
 #### FR-14: Bidirectional state for all writable controls
@@ -308,7 +323,8 @@ A Home Assistant user can see which Arm Schedule governs each Arm Mode on a Came
 **Consequences (testable):**
 - The active Arm Schedule per Arm Mode is readable per Camera Device.
 - The value reflects schedules as the user defined them, not a fixed built-in list.
-- No Home Assistant surface permits changing it.
+- No Home Assistant *entity* permits changing it; the only surface that reassigns one is FR-12a's explicit action, and a schedule's definition stays unchangeable from Home Assistant entirely.
+- The readable assignment is what makes FR-12a reversible without Home Assistant storing hidden state.
 
 #### FR-16: Camera enable control
 
@@ -671,7 +687,7 @@ Neither the library nor the integration exposes credentials in diagnostics or lo
 - Observation Record: per-class last-seen timestamps, restart-correct and self-healing (FR-1…FR-4)
 - Live detection: per-class presence, Classification Events with Peak Confidence and captured-file reference, trigger events with decoded reasons, motion with independent timeout, configurable tuning (FR-5…FR-8, FR-43)
 - Latest Capture image with timestamp state and Object Class; download-latest-recording service (FR-9…FR-11, FR-44)
-- Arming: three independent modes, override-only writes, bidirectional state for all writable controls, read-only schedule visibility, camera enable (FR-12…FR-16)
+- Arming: three independent modes, transient override writes from the controls plus an explicit schedule-assignment action, bidirectional state for all writable controls, read-only schedule visibility, camera enable (FR-12…FR-16)
 - Detection Trigger and sensitivity controls per Object Class per camera; default-install trap detection (FR-17, FR-18, FR-45)
 - Hub and Camera Device model with stable identity, correct naming, diagnostics, update signal (FR-19…FR-24)
 - UI config flow with HTTPS, verification toggle, reauthentication, permission-aware entity creation, reconfiguration (FR-25…FR-29)

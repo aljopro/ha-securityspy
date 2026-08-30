@@ -77,6 +77,37 @@ final_revision: 'e40982a8b4900764faf63c20a02589d89b357546'
 
 ## Review Triage Log
 
+### 2026-08-29 — Block resolved by architecture decision (Jensen)
+
+The `Block If` this story tripped is resolved at the level it belonged to. Jensen's ruling: **schedules and overrides are two different ideas, and one control cannot express both.** AD-7 is split accordingly (`ARCHITECTURE-SPINE.md`, "[ADOPTED; split 2026-08-29]"): arm switches write the transient override exclusively and never send `schedule=`; a persistent schedule *assignment* is permitted as a separate, explicitly invoked operation; creating, editing or deleting a schedule *definition* stays forbidden, which preserves AD-7's original Prevents. Home Assistant performs no implicit record-and-restore of a prior assignment — reversal is the same explicit operation against the id FR-15 already makes readable.
+
+PRD amended in the same pass: FR-12 split into FR-12 (transient override control) and FR-12a (persistent assignment via explicit action); FR-13 rewritten from "override-only writes" to "switches write the override; only the explicit action writes a schedule"; FR-15's read-only claim narrowed to entities and now names FR-12a as the single writer.
+
+**This story is unblocked and closed.** Its scope — `mode` is the write's target, not an armed state — was correct and is unchanged by the split; the split adds an operation this story never claimed to provide. The one defect the follow-up review found *inside* this story's scope is fixed:
+
+- `async_set_camera_arming`'s `override` argument no longer has a default. `ARM_OVERRIDE_UNCHANGED` as a default guaranteed the undetectable no-op this story exists to abolish (target modes, apply nothing, `200 OK`); it is now required, so a caller who wants "leave as-is" states it. `test_arming_defaults_to_the_unchanged_override` is replaced by `test_arming_has_no_override_default` (asserts the signature carries no default) and `test_arming_still_accepts_an_explicit_unchanged_override`. BREAKING entry added to the library CHANGELOG.
+- Docstrings citing AD-7 as an absolute ban on `schedule=` (`client.py`, `models.py`, `securityspy-openapi.yaml`) now state the split, so the next reader is not re-taught the pre-split rule.
+
+**Carried forward, not done here:** `aiosecurityspy` still has no schedule-assignment method. Per AD-19 the operation lands in the library first and the integration consumes it; Epic 6 (6.1, 6.4) unblocks only once it exists. That is new scope, not a residual of this story.
+
+
+### 2026-08-29 — Follow-up review pass (intent gap; Block If tripped)
+- intent_gap: 1: (high 1, medium 0, low 0)
+- bad_spec: 0
+- patch: 0
+- defer: 0
+- reject: 0
+- addressed_findings:
+  - none
+
+**Intent-gap finding (both reviewers, independently):** under the corrected model this story adopts, `mode` is only the *target* and `override` is the only value the library ever applies — because AD-7 forbids sending `schedule=`. The method's default is `override=ARM_OVERRIDE_UNCHANGED` (`-1`), which research §5.15.5 now confirms **on the wire** is genuinely the "leave as-is" sentinel. A default call therefore sends `mode=<target>&override=-1`, targets modes, applies nothing, and returns `200 OK` having done nothing — verbatim the undetectable no-op class this story exists to abolish. The story refused the empty *target* and left the empty *value* not merely permitted but test-locked (`test_arming_defaults_to_the_unchanged_override`).
+
+**This trips the spec's `Block If` clause verbatim.** Research §5.15.5 states it outright: the UI's disarm control is `/ssSetSchedule?cameraNum=4&schedule=0&override=-1&mode=CMA` — persistent arming and disarming is expressed by **assigning a schedule, not an override**, which is exactly the operation AD-7 forbids. An override is transient and bounded by design and cannot express "disarmed until I say otherwise". The spec's `Block If` says: *"if a real arming requirement cannot be met by an override, stop: sending `schedule=` overturns AD-7 and is an architecture decision, not an implementation choice."* Research reaches the same conclusion independently and names Epic 6 stories 6.1 and 6.4 as blocked on it.
+
+The intent contract cannot resolve this: it simultaneously requires that a caller "be able to express 'apply this override to exactly these modes'" and that no request return `200 OK` having done nothing, while retaining a default value that guarantees exactly that outcome. There is no single reading — refusing `ARM_OVERRIDE_UNCHANGED` removes the documented default and breaks every default call; keeping it preserves the defect the story was written to remove. Resolving it requires an architecture decision about AD-7, not an implementation choice.
+
+Code changes were **not** reverted: the implementation is already committed and shipped (`e40982a8`, `5b1be67d`), so reverting is destructive to published history and is left to a human decision.
+
 ### 2026-08-29 — Review pass
 - intent_gap: 0
 - bad_spec: 0

@@ -7,8 +7,8 @@ paradigm: 'layered client/adapter with two-plane data flow (lossy push + authori
 scope: 'SecuritySpy HA integration + standalone aiosecurityspy library (greenfield, full system)'
 status: final
 created: '2026-08-09'
-updated: '2026-08-09'
-binds: [FR-1..FR-45]
+updated: '2026-08-29'
+binds: [FR-1..FR-45, FR-12a]
 sources:
   - ../../prds/prd-ha-securityspy-2026-08-09/prd.md
   - ../../prds/prd-ha-securityspy-2026-08-09/addendum.md
@@ -77,11 +77,17 @@ Entity modules may import library *types* (dataclasses, exceptions for isinstanc
 - **Prevents:** two platforms classifying the same failure differently; auth-failure flapping into reauth on one 401.
 - **Rule:** The library raises its own typed hierarchy (`SecuritySpyAuthError`, `SecuritySpyConnectError`, `SecuritySpyPermissionError`, `SecuritySpyUnsupportedVersionError`); it never raises raw `aiohttp` errors and never imports HA. The adapter layer maps them exactly once: `ConfigEntryAuthFailed` per AD-18's counter, `ConfigEntryNotReady` for transient, `ConfigEntryError` for permanent — all with translation keys. Service handlers map user error → `ServiceValidationError`, operational failure → `HomeAssistantError`.
 
-### AD-7 — Arming writes override, never schedule [ADOPTED]
+### AD-7 — Override and schedule are two operations, never one control [ADOPTED; split 2026-08-29]
 
 - **Binds:** FR-12..FR-15
-- **Prevents:** Home Assistant destroying user-built schedules in SecuritySpy; controls implying an indefinite HA-set state.
-- **Rule:** The three arm switches write the Arm Override exclusively. Schedule assignment is exposed read-only (dynamic `select` populated from `schedule-list`, options never hardcoded). No code path calls a schedule-mutating write. The override's transience (bounded at ≤ 6 hours or the next scheduled event, after which the Arm Schedule resumes) is reflected in entity state on the next poll and stated in docs and translation strings — never hidden.
+- **Prevents:** Home Assistant destroying user-built schedules in SecuritySpy; controls implying an indefinite HA-set state; and — since the split — a control that presents itself as a switch while silently reverting within six hours.
+- **Rule:** The three arm switches write the Arm Override **exclusively**, and nothing bound to a switch ever sends `schedule=`. The override's transience (bounded at ≤ 6 hours or the next scheduled event, after which the Arm Schedule resumes) is reflected in entity state on the next poll and stated in docs and translation strings — never hidden. Schedule *assignment* is a **separate, explicitly invoked operation** governed by the split below. No code path creates, edits, or deletes a schedule **definition**, ever.
+- **Split (Jensen, 2026-08-29):** *schedules and overrides are two different ideas, and one control cannot express both.* The original rule collapsed them by forbidding `schedule=` outright, which left the library with no operation for the thing SecuritySpy's own disarm button performs — `/++ssSetSchedule?cameraNum=N&schedule=0&override=-1&mode=CMA` (research §5.15.5). The two ideas separate as follows:
+  1. **Override — transient, bounded, switch-driven.** "Arm this for two hours." Expressed by `override=`, never `schedule=`. This is what the arm switches write, and it is unchanged from the original decision, which §5.14 verified achievable exactly as stated.
+  2. **Schedule assignment — persistent, explicit, never a switch.** "Disarm until I say otherwise." Expressed by assigning an existing schedule id to the selected capture modes. Permitted, but only through a deliberately invoked surface (a documented HA action, not an entity toggle) whose description states that it changes SecuritySpy's configuration.
+- **What stays forbidden.** The split permits *assigning* a schedule that already exists — including the built-in `0` (Disarmed 24/7). It does **not** permit creating, editing, deleting, or reordering schedule definitions. That distinction is what preserves this decision's original *Prevents*: a user's hand-built schedules survive, because nothing this project does can alter them.
+- **No implicit restore.** Home Assistant never records a prior schedule assignment in order to silently put it back — that invents HA-resident state governing SecuritySpy, with no owner when HA is uninstalled, reinstalled, or restored from a backup taken mid-disarm. Reversal is symmetric and explicit: the prior assignment is readable per mode from `++systemInfo` and surfaced read-only (FR-15), so the user restores it by invoking the same operation with the id they can see.
+- **Routing (AD-19).** `aiosecurityspy` has no schedule-assignment method today. The operation lands in the library first, with its own tests and OpenAPI entry, and the integration consumes it — never the reverse. Epic 6 does not move before that.
 
 ### AD-8 — Settings writes are direct partial POSTs [ADOPTED]
 
@@ -251,7 +257,7 @@ graph LR
 | Observation Record (FR-1..4) | `client.py` caplist + `coordinator.py` → `sensor.py` | AD-1, AD-10, AD-15, AD-16 |
 | Live detection (FR-5..8, 43) | `stream.py` + `episodes.py` → `binary_sensor.py`, `event.py` | AD-3, AD-9, AD-17 |
 | Latest Capture + download (FR-9..11, 44) | `client.py` → `image.py`, `services.py` | AD-1, AD-10, AD-16, services convention |
-| Arming + schedule visibility (FR-12..16) | `switch.py`, `select.py` | AD-7, AD-8, AD-12 |
+| Arming + schedule visibility (FR-12, FR-12a, FR-13..16) | `switch.py`, `select.py`, `services.py` | AD-7, AD-8, AD-12, AD-19 |
 | Detection tuning + trap (FR-17, 18, 45) | `number.py`, `switch.py`, `repairs.py` | AD-8, AD-12 |
 | Device model (FR-19..24) | `entity.py`, platform modules | AD-5, AD-12 |
 | Setup/connection (FR-25..29) | `config_flow.py`, `__init__.py` | AD-6, AD-18, AD-5 |
