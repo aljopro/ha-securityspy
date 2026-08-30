@@ -8,7 +8,7 @@ followup_review_recommended: false
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
 baseline_revision: 'd5052cabcf1d4f1c1cc5c75cbe90c52f4aae67ed'
-final_revision: 'a94231a89747a6260e1bdfcbf20b35531c8d3e15'  # to be updated after commit
+final_revision: '018ff741ecb87258643677cd3d12647171a46d34'
 ---
 
 <intent-contract>
