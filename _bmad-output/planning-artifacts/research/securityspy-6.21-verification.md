@@ -777,16 +777,25 @@ with `override=-1`. Two things follow:
 
 **This trips story 1.16's `Block If` verbatim** ("the fix would require sending `schedule=` to
 express arming"). AD-7 is not wrong about what an override does; it is that the library has no
-operation for the thing the UI's disarm button performs. Epic 6's stories 6.1 and 6.4 cannot
-be built without resolving it, and it is an architecture decision, not an implementation one.
+operation for the thing the UI's disarm button performs. **Story 6.1 ("Arm and disarm each mode
+independently") cannot be built without resolving it**, and it is an architecture decision, not
+an implementation one. Story 6.2 ("Control state follows the server") depends on it only insofar
+as it must reflect whatever 6.1 writes.
 
 **Resolved 2026-08-29 (Jensen).** AD-7 is split: schedules and overrides are two different
 ideas and one control cannot express both. Arm switches keep writing the transient override
 and never send `schedule=`; a persistent schedule *assignment* is permitted as a separate,
 explicitly invoked operation; schedule *definitions* remain unchangeable from Home Assistant,
 which is what preserved AD-7's original purpose. PRD FR-12 split into FR-12/FR-12a and FR-13
-rewritten to match. Epic 6's 6.1 and 6.4 are unblocked at the decision level; they still wait
-on `aiosecurityspy` growing the assignment method (AD-19: library first).
+rewritten to match. **Story 6.1 is unblocked at the decision level**; it still waits on
+`aiosecurityspy` growing the assignment method (AD-19: library first).
+
+*Correction (flagged in review):* an earlier revision of this section named **6.1 and 6.4** as
+the blocked stories. **6.4 is "Enable and disable a camera"** — the `enabled` field on
+`++settings-cameras` (story 1.10's write), which has nothing to do with schedules or overrides
+and was never blocked by this. Only 6.1 was. The mistaken citation is corrected rather than
+replaced with another guess: 6.2 is listed above only for the dependency it genuinely has, and
+6.3 ("See which schedule governs a camera") is a read and is unaffected.
 
 ### 5.15.6 Cadence and absences
 
