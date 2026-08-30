@@ -161,7 +161,7 @@ async def test_certificate_mismatch_names_the_certificate(
     assert result["errors"] == {"base": "invalid_certificate"}
     suggestions = {
         marker.schema: marker.description["suggested_value"]
-        for marker in result["data_schema"].schema  # type: ignore[union-attr]
+        for marker in result["data_schema"].schema
         if marker.description is not None
     }
     # The toggles come back as submitted: the fix is to turn one of them off, and
@@ -245,7 +245,7 @@ async def test_request_failures_redisplay_the_form(
     assert result["errors"] == {"base": expected_error}
     suggestions = {
         marker.schema: marker.description["suggested_value"]
-        for marker in result["data_schema"].schema  # type: ignore[union-attr]
+        for marker in result["data_schema"].schema
         if marker.description is not None
     }
     # Everything typed comes back except the password: a suggested value travels

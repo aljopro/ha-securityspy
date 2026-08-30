@@ -73,9 +73,11 @@ DOMAIN = "securityspy"
 # coordinator.py
 type SecuritySpyConfigEntry = ConfigEntry[SecuritySpyRuntimeData]
 
+
 @dataclass
 class SecuritySpyRuntimeData:
     """Everything the integration owns for one config entry."""
+
     coordinator: SecuritySpyDataUpdateCoordinator
     client: SecuritySpyClient
 ```
@@ -83,9 +85,17 @@ class SecuritySpyRuntimeData:
 ```python
 # __init__.py
 PLATFORMS: list[Platform] = [
-    Platform.BINARY_SENSOR, Platform.CAMERA, Platform.EVENT, Platform.IMAGE,
-    Platform.NUMBER, Platform.SELECT, Platform.SENSOR, Platform.SWITCH, Platform.UPDATE,
+    Platform.BINARY_SENSOR,
+    Platform.CAMERA,
+    Platform.EVENT,
+    Platform.IMAGE,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.UPDATE,
 ]
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) -> bool:
     """Set up SecuritySpy from a config entry."""
@@ -95,7 +105,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
         port=entry.data[CONF_PORT],
         username=entry.data[CONF_USERNAME],
         password=entry.data[CONF_PASSWORD],
-        session=session,                      # AD-2 / Platinum inject-websession
+        session=session,  # AD-2 / Platinum inject-websession
     )
 
     # test-before-setup: fail fast with the right exception type (AD-6)
@@ -115,7 +125,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
         ) from err
 
     coordinator = SecuritySpyDataUpdateCoordinator(hass, entry, client, server)
-    await coordinator.async_start()           # hydrate + open stream, non-blocking for FR-2
+    await coordinator.async_start()  # hydrate + open stream, non-blocking for FR-2
 
     entry.runtime_data = SecuritySpyRuntimeData(coordinator=coordinator, client=client)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -138,7 +148,7 @@ Bronze requires service actions to be registered in `async_setup`, **not** `asyn
 
 ```python
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    async_setup_services(hass)     # services.py
+    async_setup_services(hass)  # services.py
     return True
 ```
 
@@ -160,15 +170,15 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
             LOGGER,
             config_entry=entry,
             name=DOMAIN,
-            update_interval=None,          # AD-4: push-fed, we schedule our own polls
+            update_interval=None,  # AD-4: push-fed, we schedule our own polls
         )
         self.client = client
         self.server = server
-        self._auth_failures = 0            # AD-18: one counter, both planes
+        self._auth_failures = 0  # AD-18: one counter, both planes
 
     async def async_start(self) -> None:
         """Hydrate from the poll plane, then open the push plane."""
-        await self._async_reconcile()                       # FR-2: correct before first event
+        await self._async_reconcile()  # FR-2: correct before first event
         self.client.stream.subscribe(self._handle_event)
         self.client.stream.on_reconnected(self._handle_reconnected)
         await self.client.stream.async_connect()
@@ -176,7 +186,7 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
     @callback
     def _handle_event(self, event: SecuritySpyEvent) -> None:
         """Push plane. May only ADVANCE state (AD-1/AD-16)."""
-        new_data = merge_push(self.data, event)             # AD-16: the one merge function
+        new_data = merge_push(self.data, event)  # AD-16: the one merge function
         self.async_set_updated_data(new_data)
 ```
 
@@ -193,7 +203,7 @@ class SecuritySpyCameraEntity(CoordinatorEntity[SecuritySpyDataUpdateCoordinator
         self._camera_number = camera_number
         self.entity_description = description
         uuid = coordinator.server.uuid
-        self._attr_unique_id = f"{uuid}_{camera_number}_{description.key}"   # AD-5
+        self._attr_unique_id = f"{uuid}_{camera_number}_{description.key}"  # AD-5
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{uuid}_{camera_number}")},
             via_device=(DOMAIN, uuid),
@@ -204,7 +214,7 @@ class SecuritySpyCameraEntity(CoordinatorEntity[SecuritySpyDataUpdateCoordinator
 
     @property
     def camera(self) -> CameraData:
-        return self.coordinator.data.cameras[self._camera_number]   # int keys (AD-15)
+        return self.coordinator.data.cameras[self._camera_number]  # int keys (AD-15)
 ```
 
 `CoordinatorEntity` handles `entity-event-setup` (Bronze) for you — it subscribes in `async_added_to_hass` and unsubscribes on removal. Hand-rolling subscriptions is how that rule gets violated.
@@ -231,7 +241,7 @@ The rule: **the entity's `name` describes only the data point**, never the devic
 # Hub device — the SecuritySpy Server (AD-5)
 DeviceInfo(
     identifiers={(DOMAIN, server.uuid)},
-    entry_type=DeviceEntryType.SERVICE,     # software on a Mac, not an appliance
+    entry_type=DeviceEntryType.SERVICE,  # software on a Mac, not an appliance
     name=server.name,
     manufacturer="Ben Software",
     sw_version=server.version,
@@ -252,6 +262,7 @@ Naming outcomes with `has_entity_name = True`:
 @dataclass(frozen=True, kw_only=True)
 class SecuritySpySensorEntityDescription(SensorEntityDescription):
     """Describes a SecuritySpy sensor."""
+
     value_fn: Callable[[CameraData], datetime | None]
 
 
@@ -270,9 +281,9 @@ OBSERVATION_SENSORS: tuple[SecuritySpySensorEntityDescription, ...] = tuple(
 ### Entity categories and defaults
 
 ```python
-_attr_entity_category = EntityCategory.CONFIG        # arming, triggers, sensitivity, enable
-_attr_entity_category = EntityCategory.DIAGNOSTIC    # cpu, fps, data rate, cert expiry
-_attr_entity_registry_enabled_default = False        # camera/live video (FR-22 → protects ONVIF)
+_attr_entity_category = EntityCategory.CONFIG  # arming, triggers, sensitivity, enable
+_attr_entity_category = EntityCategory.DIAGNOSTIC  # cpu, fps, data rate, cert expiry
+_attr_entity_registry_enabled_default = False  # camera/live video (FR-22 → protects ONVIF)
 ```
 
 ---
@@ -289,7 +300,7 @@ class SecuritySpyConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                server = await _async_validate(self.hass, user_input)   # test-before-configure
+                server = await _async_validate(self.hass, user_input)  # test-before-configure
             except SecuritySpyConnectError:
                 errors["base"] = "cannot_connect"
             except SecuritySpyAuthError:
@@ -297,13 +308,11 @@ class SecuritySpyConfigFlow(ConfigFlow, domain=DOMAIN):
             except SecuritySpyUnsupportedVersionError:
                 errors["base"] = "unsupported_version"
             else:
-                await self.async_set_unique_id(server.uuid)             # AD-5
-                self._abort_if_unique_id_configured()                   # unique-config-entry
+                await self.async_set_unique_id(server.uuid)  # AD-5
+                self._abort_if_unique_id_configured()  # unique-config-entry
                 return self.async_create_entry(title=server.name, data=user_input)
 
-        return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors
-        )
+        return self.async_show_form(step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors)
 ```
 
 ### Reauth (Silver `reauthentication-flow`, FR-27)
@@ -395,10 +404,11 @@ Loss once at ERROR, retries at DEBUG, recovery once at WARNING. A multi-hour out
 ```python
 TO_REDACT = {CONF_USERNAME, CONF_PASSWORD, "auth", "token"}
 
+
 async def async_get_config_entry_diagnostics(hass, entry: SecuritySpyConfigEntry) -> dict:
     return {
         "entry": async_redact_data(entry.as_dict(), TO_REDACT),
-        "data": anonymize(entry.runtime_data.coordinator.data),   # library-owned
+        "data": anonymize(entry.runtime_data.coordinator.data),  # library-owned
     }
 ```
 
@@ -410,8 +420,11 @@ Two uses in this project: a missing SecuritySpy permission (naming the exact per
 
 ```python
 ir.async_create_issue(
-    hass, DOMAIN, f"missing_permission_{permission}",
-    is_fixable=False, severity=ir.IssueSeverity.WARNING,
+    hass,
+    DOMAIN,
+    f"missing_permission_{permission}",
+    is_fixable=False,
+    severity=ir.IssueSeverity.WARNING,
     translation_key="missing_permission",
     translation_placeholders={"permission": permission, "camera": camera.name},
 )

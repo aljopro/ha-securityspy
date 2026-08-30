@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Actions are pinned to commit SHAs rather than floating tags. A tag can be
+# force-moved by whoever controls the action's repository, which would execute
+# their code in this workflow.
+env:
+  # uv cannot interpolate environment variables into `[tool.uv.sources]`, so the
+  # path there stays a literal relative path and every *other* consumer of the
+  # library's location reads it from here instead.
+  AIOSECURITYSPY_PATH: aiosecurityspy
+
+jobs:
+  # Lane 1 -- the library exactly as it is right now.
+  #
+  # Resolves `aiosecurityspy` through `[tool.uv.sources]` as a local editable
+  # path, so an in-progress library change is verified against the integration in
+  # the same commit. This is the fast loop; it says nothing about what a user
+  # installs, which is what lane 2 is for.
+  dev:
+    name: Integration against the in-progress library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+
+      - name: The manifest pin and the library must agree
+        run: uv run --no-project python scripts/check_library_pin.py
+
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy custom_components tests
+
+      # Bronze `config-flow-test-coverage` requires 100% on the config flow, so
+      # it is gated rather than merely reported.
+      - name: Tests, with the Bronze config-flow coverage gate
+        run: >
+          uv run pytest
+          --cov=custom_components.securityspy.config_flow
+          --cov-report=term-missing
+          --cov-fail-under=100
+
+  # Lane 2 -- the library as a user actually installs it.
+  #
+  # `UV_NO_SOURCES_PACKAGE` drops the local path override for this one package,
+  # so `aiosecurityspy` resolves from PyPI at the version `manifest.json` pins --
+  # which is what Home Assistant pip-installs when a HACS user sets the
+  # integration up. Nothing verified this before, which is how the standalone
+  # library repository silently drifted 1,620 lines behind the in-tree copy.
+  #
+  # Expected to fail until the pinned version is published. That failure is the
+  # signal, not a nuisance: it means the integration is not shippable yet.
+  released:
+    name: Integration against the published library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+
+      - name: The pinned version must exist on PyPI
+        run: uv run --no-project python scripts/check_library_pin.py --released
+
+      - name: Resolve the library from PyPI, not from the local path
+        env:
+          UV_NO_SOURCES_PACKAGE: aiosecurityspy
+        run: uv sync
+
+      - name: The installed library must be the pinned one
+        env:
+          UV_NO_SOURCES_PACKAGE: aiosecurityspy
+        run: |
+          uv run python - <<'PY'
+          import json, pathlib, re
+          from importlib.metadata import version
+          manifest = json.loads(pathlib.Path(
+              "custom_components/securityspy/manifest.json").read_text())
+          pin = next(r for r in manifest["requirements"]
+                     if r.startswith("aiosecurityspy=="))
+          pinned = re.fullmatch(r"aiosecurityspy==(.+)", pin).group(1)
+          installed = version("aiosecurityspy")
+          assert installed == pinned, f"pinned {pinned}, installed {installed}"
+          print(f"ok: running against published aiosecurityspy {installed}")
+          PY
+
+      - env:
+          UV_NO_SOURCES_PACKAGE: aiosecurityspy
+        run: uv run pytest
+
+  hassfest:
+    name: hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb # master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main
+        with:
+          category: integration

@@ -322,7 +322,7 @@ wheels = [
 
 [[package]]
 name = "aiosecurityspy"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "aiosecurityspy" }
 dependencies = [
     { name = "aiohttp", version = "3.13.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14.2'" },
@@ -339,6 +339,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "ruff", specifier = ">=0.6" },
+    { name = "trustme", specifier = ">=1.2.1" },
 ]
 
 [[package]]

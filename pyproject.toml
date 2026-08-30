@@ -45,6 +45,17 @@ branch = true
 line-length = 100
 src = ["custom_components", "tests"]
 target-version = "py314"
+# Agent tooling, BMAD workflow assets and the vendored library are not this
+# repository's source. `aiosecurityspy/` carries its own ruff configuration and
+# is linted by its own CI; linting it from here would apply the wrong settings.
+extend-exclude = [
+    ".agents",
+    ".bmad-loop",
+    ".claude",
+    "_bmad",
+    "_bmad-output",
+    "aiosecurityspy",
+]
 
 [tool.ruff.lint]
 select = [
@@ -57,6 +68,8 @@ ignore = ["D203", "D213", "COM812", "ISC001"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S105", "S106", "D100", "D103"]
+# Developer CLIs: stdout is the interface, so `print` is the point.
+"scripts/*" = ["T201"]
 
 [tool.ruff.lint.isort]
 # `custom_components` is this repository's own code, not a dependency.
@@ -75,3 +88,14 @@ warn_unreachable = true
 warn_unused_configs = true
 disallow_any_generics = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+# `custom_components/` has no `__init__.py` chain up to the repository root, so
+# mypy needs to be told where the package roots begin.
+explicit_package_bases = true
+mypy_path = "."
+
+# `pytest-homeassistant-custom-component` ships no py.typed marker, so its
+# helpers are untyped to mypy. Scoped to that module rather than made global, so
+# a genuinely missing stub anywhere else still fails.
+[[tool.mypy.overrides]]
+module = ["pytest_homeassistant_custom_component.*"]
+ignore_missing_imports = true
