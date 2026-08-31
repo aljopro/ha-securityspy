@@ -72,10 +72,14 @@ be silent longer than the configured gap mid-crossing, one presence becomes two 
 — now quantified rather than hypothesised. A subject who stands still, turns away, or
 steps briefly out of frame crosses it.
 
-**Recommendation:** raise `DEFAULT_DETECTION_GAP` to **45-60 s**. On this capture gap=60
+**Recommendation as first written — SUPERSEDED by §8, kept so the reasoning stays auditable:** raise `DEFAULT_DETECTION_GAP` to **45-60 s**. On this capture gap=60
 produces results identical to gap=30, so the change costs nothing here; its only real
 cost is latency in declaring a subject gone. Still an `[ASSUMPTION]`, but a better-founded
 one than 30 s.
+
+**This did not survive a larger sample.** A 3 h capture the same night put the 24 s
+silence in a 0.9 % tail rather than making it representative, and found no boundary in the
+gap distribution to move the default to. **Keep 30 s** — see §8.
 
 ## 4. Threshold is inert for humans; vehicles look different
 
@@ -105,8 +109,10 @@ were at or above threshold, median 98. Debounce 1 and debounce 5 gave identical 
 Whether the model improved since §3.5, or interior cameras at close range simply produce
 steadier inference than whatever §3.5 measured, is unresolved. **Debounce should be kept**
 — it is insurance against the noisy case, which is documented and may well reappear on
-distant outdoor cameras — but it is currently unexercised, and no capture has yet
-justified the value 3 over 1.
+distant outdoor cameras.
+
+**Corrected by §8:** "currently unexercised" held only for this 90 s sample. Over 3 h
+debounce does substantial work, and the value 3 over 1 is justified.
 
 ## 6. Wire facts confirmed in passing
 
@@ -137,3 +143,68 @@ real traffic. **Not** enough to retune defaults globally. Outdoor cameras at dis
 the likely source of §3.5's violent confidence swings — are unrepresented, and no vehicle
 or animal crossing has yet been captured at a confidence that should open an episode.
 A longer capture spanning exterior cameras is the next input.
+
+## 8. Second capture: 3 hours, 4,469 CLASSIFY records
+
+A 3 h capture (19,759 records across 3 connections, **0 unparseable**) taken the same
+night, after classification was enabled on further cameras. It supersedes two conclusions
+drawn from the 90 s sample above.
+
+### 8.1 Debounce is not inert — correction to §5
+
+Over 3 h all three parameters move the outcome, where at 90 s only `gap` did. At
+threshold 70 / gap 30 s, debounce 1 → 5 takes 97 episodes to 64. The peak-confidence
+column shows what it removes: at `debounce=1` episodes enter at 70, 71, 73, while at
+`debounce=5` the weakest is 93. Debounce is filtering exactly the stray high-confidence
+frames it was designed for. The 90 s sample was too clean to exercise it, and
+`DEFAULT_DETECTION_DEBOUNCE = 3` is justified in a way it previously was not.
+
+### 8.2 There is no natural gap boundary — correction to §3
+
+The reason to expect one: gaps *within* a presence should cluster short, gaps *between*
+presences should cluster long, and the valley between them is where the default belongs.
+Across 3,712 gaps between consecutive qualifying signals there is no valley — the tail
+decays smoothly, with nothing to anchor a threshold to:
+
+| gap band | count | share |
+|---|---|---|
+| 0-2 s | 3297 | 88.8 % |
+| 2-5 s | 145 | 3.9 % |
+| 5-10 s | 72 | 1.9 % |
+| 10-20 s | 77 | 2.1 % |
+| 20-30 s | 33 | 0.9 % |
+| 30-45 s | 25 | 0.7 % |
+| 45-60 s | 14 | 0.4 % |
+| 60-120 s | 19 | 0.5 % |
+| > 120 s | 30 | 0.8 % |
+
+Coverage: **30 s covers 97.68 %** of gaps, 45 s covers 98.30 %, 60 s covers 98.71 %.
+Moving 30 → 60 s absorbs **38 gaps out of 3,712** (~1 %), and an unknown fraction of those
+38 are genuinely separate visits that *should* stay separate.
+
+**Conclusion: keep `DEFAULT_DETECTION_GAP` at 30 s.** The §3 recommendation to raise it
+was inferred from one 90 s capture of one subject in two rooms; the 24 s silence it rested
+on is real but sits in a 0.9 % tail. No measurement identifies a better value, because the
+distribution contains no boundary to find. The choice is a product trade-off — split one
+presence, or merge two — not a discoverable optimum.
+
+That is tolerable because **the value is already injected per camera per object class**
+(AD-3, FR-8): `ReducerConfig(gap=...)` as the default, with `(camera, None)` and
+`(None, class)` overrides resolved ahead of it. A site whose cameras behave differently
+overrides it rather than living with the default. What is *not* yet built is exposing it
+through the Home Assistant options flow — Epic 5, deliberately out of scope for story 1.5.
+
+### 8.3 Reading the sweep table
+
+The ratio column is **not** a quality score. A higher ratio only means fewer episodes, and
+enlarging the gap always produces fewer: the table's best ratio (223:1 at 90/5/60 s) comes
+from finding just 30 episodes in 3 hours. With no ground truth for how many presences
+actually occurred, the sweep demonstrates *sensitivity*, not correctness. Nothing here
+identifies a correct tuning; it bounds how much the tuning matters.
+
+### 8.4 Still open
+
+`VEHICLE` remains unresolved. No capture yet contains a vehicle crossing at a confidence
+that should have opened an episode, so §4's observation — vehicle confidence peaking at 41
+and 44 against a human median of 98 — is still two data points. An exterior capture during
+vehicle traffic is the missing input.

@@ -211,16 +211,22 @@ status: documented
   opens no socket. Fix belongs with the live-server fixture — close the client/session in
   teardown — not with this story.
 
-- **PRD Open Q5: `DEFAULT_DETECTION_GAP` (30 s) has only 6 s of measured margin.**
-  First live evidence (`_bmad-output/planning-artifacts/research/classification-tuning-evidence.md`,
-  2026-08-30) reduced 690 real `CLASSIFY` signals into 2 episodes at 172.5:1 — the
-  reduction requirement holds — but a sweep showed `gap` is the only parameter that
-  changes the outcome: every debounce 1-5 and every threshold 70-80 produced identical
-  results, while gap=10 s split each presence in two. Silences of **24.0 s and 22.0 s**
-  were measured *inside* a single continuous presence, against a 30 s default. Raising
-  the default to 45-60 s costs nothing on the captured data (gap=60 matched gap=30) and
-  buys real headroom. Also open: `VEHICLE` confidence topped out at 41 and 44 in two
-  separate observations, both far under the 70 threshold that humans clear at a median
-  of 98, which suggests vehicles need a per-class threshold (FR-8 `(None, "vehicle")`).
-  Not yet actioned because the evidence is one 90 s capture of one subject on two
-  interior cameras; a capture spanning exterior cameras is the next input.
+- **PRD Open Q5: the gap default is settled at 30 s; the vehicle threshold is not.**
+  Superseding the earlier entry here (which recommended raising the gap to 45-60 s on the
+  strength of a 90 s capture): a 3 h capture of 4,469 `CLASSIFY` records found **no natural
+  boundary** in the gap distribution — 3,712 inter-signal gaps decay smoothly with no
+  valley, and 30 s already covers **97.68 %** of them against 98.71 % for 60 s. Moving the
+  default would absorb 38 gaps out of 3,712, an unknown share of which are genuinely
+  separate visits. **Keep 30 s**; it is already injectable per camera per object class
+  (AD-3, FR-8), so a differing site overrides it. The same capture also *reversed* the
+  earlier claim that debounce is inert — over 3 h, debounce 1 → 5 moves 97 episodes to 64
+  and removes exactly the marginal 70-73 confidence episodes it exists to remove, so
+  `DEFAULT_DETECTION_DEBOUNCE = 3` is now justified.
+  **What remains open:** `VEHICLE` confidence peaked at 41 and 44 in two observations
+  against a human median of 98, suggesting vehicles need a lower per-class threshold via
+  `(None, "vehicle")`. No capture yet contains a vehicle crossing that *should* have opened
+  an episode, so this is still two data points. An exterior capture during vehicle traffic
+  is the missing input. Evidence:
+  `_bmad-output/planning-artifacts/research/classification-tuning-evidence.md` §8.
+  **Also open (Epic 5):** none of these values is exposed through the Home Assistant
+  options flow yet; story 1.5 deliberately scoped that out.
