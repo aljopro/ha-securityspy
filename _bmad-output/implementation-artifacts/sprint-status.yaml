@@ -1,5 +1,5 @@
 # generated: 2026-08-09T22:17:18-05:00
-# last_updated: 2026-08-30T20:39:19-05:00
+# last_updated: 2026-08-30T22:18:29-05:00
 # project: ha-securityspy
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-09T22:17:18-05:00
-last_updated: 2026-08-30T20:39:19-05:00
+last_updated: 2026-08-30T22:18:29-05:00
 project: ha-securityspy
 project_key: NOKEY
 tracking_system: file-system
