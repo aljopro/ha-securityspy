@@ -195,3 +195,32 @@ resolution: Documented 2026-08-30 in `securityspy-6.21-verification.md` §5.20.4
   Back Patio and Driveway differ by exactly the "Get captured footage" checkbox,
   and their masks are 7 and 1 -- one box flips both bit 2 and bit 1.
 status: documented
+
+## Deferred from: code review of spec-1-5-detection-episode-reducer (2026-08-30)
+
+- **A leaked live-server transport makes the suite intermittently fail on an unrelated test.**
+  `tests/test_live_server.py` leaves an aiohttp transport unclosed against the real server
+  (`ResourceWarning: unclosed transport <_SelectorSocketTransport fd=17>`, socket to
+  `…:8001`). Python finalizes it at an arbitrary later moment, and pytest's
+  `unraisableexception` plugin raises it as an `ExceptionGroup` during whichever test is
+  then in setup — observed landing on `test_models.py::test_class_slug[-unknown]` and
+  `[__weird__-weird]`, neither of which touches a socket. Under `pytest-randomly` the
+  victim varies, so the failure looks like a different test each time.
+  Roughly 1 run in 4 locally. **Confirmed pre-existing:** reproduced with the story-1.5
+  review patches stashed, on unmodified `HEAD`. Not caused by the episode reducer, which
+  opens no socket. Fix belongs with the live-server fixture — close the client/session in
+  teardown — not with this story.
+
+- **PRD Open Q5: `DEFAULT_DETECTION_GAP` (30 s) has only 6 s of measured margin.**
+  First live evidence (`_bmad-output/planning-artifacts/research/classification-tuning-evidence.md`,
+  2026-08-30) reduced 690 real `CLASSIFY` signals into 2 episodes at 172.5:1 — the
+  reduction requirement holds — but a sweep showed `gap` is the only parameter that
+  changes the outcome: every debounce 1-5 and every threshold 70-80 produced identical
+  results, while gap=10 s split each presence in two. Silences of **24.0 s and 22.0 s**
+  were measured *inside* a single continuous presence, against a 30 s default. Raising
+  the default to 45-60 s costs nothing on the captured data (gap=60 matched gap=30) and
+  buys real headroom. Also open: `VEHICLE` confidence topped out at 41 and 44 in two
+  separate observations, both far under the 70 threshold that humans clear at a median
+  of 98, which suggests vehicles need a per-class threshold (FR-8 `(None, "vehicle")`).
+  Not yet actioned because the evidence is one 90 s capture of one subject on two
+  interior cameras; a capture spanning exterior cameras is the next input.
