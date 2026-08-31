@@ -32,7 +32,9 @@ uv run mypy --strict custom_components tests        # root
 uv run mypy --strict src tests                      # inside aiosecurityspy/
 
 # Library-only: validate the OpenAPI description, build distributions
-uv run --directory aiosecurityspy python -c "from openapi_spec_validator import validate; from openapi_spec_validator.readers import read_from_filename; validate(read_from_filename('docs/securityspy-openapi.yaml')[0])"
+# (strict YAML + OpenAPI 3.1 + x-verification coverage; plain openapi_spec_validator
+#  is NOT enough -- it loads via PyYAML, which silently drops duplicate keys)
+uv run --directory aiosecurityspy python ../scripts/validate_openapi.py
 uv run --directory aiosecurityspy uv build
 ```
 
@@ -45,7 +47,7 @@ Don't guess at protocol or architecture decisions; they're written down and a st
 - **[docs/ha-integration-reference.md](docs/ha-integration-reference.md)** — HA integration patterns written the way *this* project's architecture requires (file structure, `runtime_data`, push-fed coordinator, config/reauth/reconfigure flows, exception taxonomy, quality-scale rules). Read before touching `custom_components/`.
 - **`_bmad-output/planning-artifacts/research/securityspy-api-reference.md`** — the reverse-engineered SecuritySpy 6.x API (endpoints, event framing, bitmask decoding, arming model). This supersedes the vendor's own docs where they disagree. Read before touching `aiosecurityspy/`.
 - **`_bmad-output/planning-artifacts/architecture/architecture-ha-securityspy-2026-08-09/ARCHITECTURE-SPINE.md`** — binding architecture decisions AD-1…AD-18. If a story needs a decision not here, it's either in the spine's Deferred section or it's a hole to surface, not invent.
-- **[aiosecurityspy/docs/securityspy-openapi.yaml](aiosecurityspy/docs/securityspy-openapi.yaml)** — machine-readable OpenAPI 3.1 description of the wire API, with `x-verification` markers (`live-6.21` / `client-source` / `research-only`) per operation; CI fails if one is missing.
+- **[aiosecurityspy/docs/securityspy-openapi.yaml](aiosecurityspy/docs/securityspy-openapi.yaml)** — machine-readable OpenAPI 3.1 description of the wire API, with `x-verification` markers (`live-6.21` / `client-source` / `research-only`) per operation; CI fails if one is missing, via `scripts/validate_openapi.py`. That script also rejects duplicate YAML keys: PyYAML keeps only the last, so a second `description:` on one operation validates clean while silently discarding the first — and strict parsers (js-yaml, and therefore most editor Swagger extensions) refuse the file outright. Keep `openapi:` as the first line so those extensions detect it.
 
 ## Non-negotiable architecture decisions
 

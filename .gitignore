@@ -28,3 +28,5 @@ htmlcov/
 
 # Browser HAR captures: contain Authorization headers (base64 credentials)
 *.har
+
+.DS_Store

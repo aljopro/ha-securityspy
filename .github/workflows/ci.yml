@@ -35,6 +35,9 @@ jobs:
         run: uv run --no-project python scripts/check_library_pin.py
 
       - run: uv sync --frozen
+
+      - name: The OpenAPI description must be strict-parseable and verified
+        run: uv run --directory aiosecurityspy python ../scripts/validate_openapi.py
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy custom_components tests
