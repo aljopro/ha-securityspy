@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-08-29'
 status: 'done'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false  # fourth pass (R3) 2026-09-03: 2 low-severity patches, 2 findings deferred to story 1.18/other stories, 6 rejected (mostly already-settled or speculative)
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
 baseline_revision: '917da39c23ac19ace253af4ea7dad4f507fb74b4'
@@ -124,11 +124,23 @@ final_revision: '17a3023'
   confirmation (§5.8, G3/G4) is uncommitted research left for a later pass and is not
   cited here. Rejected.
 
+### 2026-09-03 — Review pass (follow-up, fourth overall)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 2: (high 0, medium 0, low 2)
+- defer: 2: (high 0, medium 2, low 0)
+- reject: 6: (high 0, medium 0, low 6)
+- addressed_findings:
+  - `[low]` `[patch]` `async_set_camera_enabled` validated `camera_number` itself via `_validated_camera_number`, then passed the already-validated number into `async_set_camera_settings`, which validates the same value again -- harmless but duplicate work on every call, against the codebase's own single-source-of-truth convention. Removed the redundant pre-validation; the downstream call still raises the identical `ValueError` before any request, unchanged behavior (existing test `test_bad_camera_number_is_refused_by_every_new_method` in `test_settings.py`, asserting `session.calls == []` on a bad camera number, still passes).
+  - `[low]` `[patch]` Neither `_decode_schedules` nor `CameraScheduleAssignment.resolve_names` had a test covering a negative schedule id, even though camera numbers are explicitly range-validated elsewhere in the library (`_validated_camera_number`) and a reader could reasonably assume the same discipline applies here. Added a regression test confirming both treat a negative id as an ordinary opaque key -- no validation, matching the code's actual (correct) behavior.
+- Both reviewers independently traced the diff since baseline `917da39c`, which by now spans this story plus fourteen subsequent stories including the just-completed 1.7/1.8 follow-ups. Edge Case Hunter reported zero new findings after tracing this story's own decode and write paths, plus everything already on the pre-identified deferred list, and finding every branch already guarded. Blind Hunter's remaining findings split into two genuinely new but out-of-scope items (deferred below, both attributed to story 1.18's `async_get_visible_cameras`) and six items already raised and explicitly rejected in this story's own prior review passes (the enable-write mechanism's live-verification status, the `enabled` default mismatch) or resting on speculative future risk with no concrete current failure (the release-before-map_status header-inspection tradeoff, the `IDENTIFYING_KEYS` maintenance-trap comment, the schedule-assignment/arming type-system separation, and `Capture.file_size_mb`'s breaking-change status -- the last of which belongs to story 1.15 and is already tracked in `deferred-work.md`'s existing breaking-change entries).
+
+Rejected, with reasons: the enable-write mechanism (id-only checkbox, `enabled=1`/`enabled=0`) being unconfirmed by a live round-trip -- already raised and rejected in this story's first review pass ("§5.5 citation reads as unverified by write... Rejected"; live confirmation is deliberately deferred research, not a blocking gap); `CameraSettings.enabled` defaulting `False` against `Camera.enabled`'s `True` -- already raised and rejected in this story's first pass as the settings model's established convention, not a new inconsistency; `Capture.file_size_mb`'s rename from `file_size` being a breaking pre-1.0 change with no semver bump -- real, but story 1.15's own defect, already logged in `deferred-work.md`'s existing entries for stories 1.13/1.15/1.16; releasing the response before `_map_status` on every non-2xx status (not only 401) foreclosing future header inspection on 403/redirect paths -- speculative, the reviewer's own framing concedes "not a bug today"; `IDENTIFYING_KEYS`'s three-literal-key scope being a "maintenance trap" for a hypothetical future container field -- no concrete current defect, a documentation-discipline concern; no type-system guard preventing a hypothetical future contributor from routing a schedule-assignment write through `async_set_camera_arming`'s `modes` parameter -- speculative, AD-7 already documents the separation and no writable schedule-assignment method exists yet to conflate it with.
+
 ## Auto Run Result
 
 - **Status:** done
-- **Follow-up review recommended:** true -- the fixture correction and the two-source
-  `enabled` semantics are worth an independent pass.
+- **Follow-up review recommended:** false -- fourth pass (R3) 2026-09-03: 2 low-severity patches (redundant validation, test coverage), 2 findings deferred to other stories, 6 rejected (mostly already-settled from prior passes or speculative). Edge Case Hunter found nothing new in this story's own territory.
 
 ## Design Notes
 

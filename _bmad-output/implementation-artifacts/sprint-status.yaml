@@ -151,7 +151,7 @@ action_items:
     status: done
   - epic: 1
     ref: "R3"
-    action: "Run follow-up reviews on stories 1.7, 1.8, 1.10, 1.11 and 1.16; close DW-3 and DW-4. (2026-09-03: 1.7 and 1.8 done, closes DW-3 and DW-4. 1.10, 1.11 and 1.16 remain.)"
+    action: "Run follow-up reviews on stories 1.7, 1.8, 1.10, 1.11 and 1.16; close DW-3 and DW-4. (2026-09-03: 1.7, 1.8 and 1.10 done, closes DW-3 and DW-4. 1.11 and 1.16 remain.)"
     owner: "Jensen"
     status: open
   - epic: 1
