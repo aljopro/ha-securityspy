@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-08-28'
 status: 'done'
 baseline_revision: 'e0f0d5b0b5221e3ee2e084fddc466f1d63d31f8d'
-final_revision: '157cabbc0ffda02b67ae8568daaa1d1460007755'
+final_revision: 'cf43fb36'
 review_loop_iteration: 0
 followup_review_recommended: false  # fourth pass (R3) 2026-09-03: 1 low-severity docstring patch; 10 pre-existing out-of-scope findings deferred to DW (attributed to other stories via git log -S); 3 rejected
 context: []
