@@ -5,7 +5,7 @@ created: '2026-08-17'
 status: 'done'
 baseline_revision: '75a1137a4d01748cee06706f350da218e70599a4'
 review_loop_iteration: 0
-final_revision: 'edbbbbb9c6a4bb27ba8f97399a165ec011078f4a'
+final_revision: '5c40fb11'
 followup_review_recommended: false  # fourth pass (R3) 2026-09-03: 5 patches applied (2 medium security/PII coverage gaps, 3 low-severity edge cases), all localized to diagnostics.py; 5 pre-existing out-of-scope issues deferred to DW; 0 rejected
 context: []
 warnings: [oversized]
