@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-08-10'
 status: 'done'
 baseline_revision: 'aeaedb2c39b795d1c2be73ba273432851085a948'
-final_revision: '4ac98c7f601175dec97e184bf5611a85b1a1f3a7'
+final_revision: '04207f8c6167e1243678434599421a5c7affc328'
 review_loop_iteration: 0
 followup_review_recommended: false  # 2 patches, both high; tightly localized, no public-API behavior change, regression tests added
 context:
