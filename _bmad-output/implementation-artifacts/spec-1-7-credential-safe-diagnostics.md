@@ -6,7 +6,7 @@ status: 'done'
 baseline_revision: '75a1137a4d01748cee06706f350da218e70599a4'
 review_loop_iteration: 0
 final_revision: 'edbbbbb9c6a4bb27ba8f97399a165ec011078f4a'
-followup_review_recommended: true
+followup_review_recommended: false  # fourth pass (R3) 2026-09-03: 5 patches applied (2 medium security/PII coverage gaps, 3 low-severity edge cases), all localized to diagnostics.py; 5 pre-existing out-of-scope issues deferred to DW; 0 rejected
 context: []
 warnings: [oversized]
 ---
@@ -154,6 +154,22 @@ Rejected, with reasons: the Blind Hunter's blocking claim that the package is un
 
 Rejected, with reasons: `_MAX_DEPTH = 12` justified by one example (no concrete payload was shown to exceed it, and the cap already marks rather than raises); the URL sweep proving its claim only against a stub (the genuine gap in it — a cross-host redirect re-sending `auth=` — is deferred rather than rejected; the rest is aiohttp's contract, which the docstring already concedes); `redact_url` returning `**REDACTED**` rather than a distinguishable marker for a non-string (fail-closed is the documented contract for that branch); set-member collapse under redaction and secret-ordering inside inserted markers (cosmetic, and now re-raised for the third consecutive pass); a marker in the *input* being indistinguishable from a redaction in the output (same class); comment and CHANGELOG volume (style, and the specific comments that asserted properties the code lacked were fixed above); and the README "Status" wording.
 
+### 2026-09-03 — Review pass (fourth, follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 5: (high 1, medium 2, low 2)
+- defer: 5: (high 1, medium 3, low 1)
+- reject: 0
+- addressed_findings:
+  - `[high]` `[patch]` A URL nested in the path's *bare* segment survived percent-encoded — `_redact_path` routed the matrix-parameter value through the decode-then-recheck logic but sent `segments[0]` (everything before the first `;`) through the literal-pattern pass alone, so `redact_url("http://h/proxy/" + quote("http://bob:s3cret@z/", safe=""))` kept the credential intact once decoded. The third pass's changelog claimed the path-nesting case was fixed, but no test covered its percent-encoded form (only the literal path and the percent-encoded query were tested) — the "fixed" claim overstated coverage. Extracted the decode-then-recheck logic shared by `_redact_parameter_value` into `_redact_nested_urls_deep` and routed `segments[0]` through it too.
+  - `[medium]` `[patch]` `IDENTIFYING_KEYS` was wired into `anonymize()`'s mapping walk but never into `redact_url()` — a URL carrying `?ddnsName=...` or `;wanAddress=...`, the exact PII values AD-13's 2026-08-29 widening added the constant to catch, passed `redact_url()` untouched even though the same key in a dict is redacted. `_redact_query`/`_redact_path`'s key checks now also test `is_identifying_key`, via a shared `_is_redacted_key` helper.
+  - `[medium]` `[patch]` The credential-containment sweep — the spec's own standing "no URL the library builds carries a credential" test — was never extended to the capture-media paths (`async_get_capture_preview`/`async_get_capture_file`, added by story 1.9 after this story landed), the two paths most likely to carry a path-derived credential-looking string. `drive_every_path` now also fetches a preview and drains a capture file; `FakeResponse` gained `release()` and `__await__` so the fake session serves `_stream_bytes`'s non-context-managed `await session.get(...)` call, not only the `async with` shape the other paths use.
+  - `[low]` `[patch]` `_redact_userinfo` treated a present-but-empty password (`http://bob:@host/`) the same as a present one, emitting a fabricated `REDACTED` for a password that was never there — the exact "never invent a password" violation the function's own comment argues against one branch up. Now distinguishes no-colon, colon-with-empty-password, and colon-with-password.
+  - `[low]` `[patch]` The module docstring claimed `?auth=` redaction has form-specific handling for "both its base64 and `!`-prefixed scoped-token forms" — the redactor replaces the whole value regardless of prefix; no such branch exists. Reworded to state what the code actually does.
+- Findings were surfaced by two independent reviewers (Blind Hunter, Edge Case Hunter) run in parallel against the diff since baseline `75a1137a`, which by now spans this story plus eleven subsequent stories. Findings outside `diagnostics.py`'s own scope (`client.py`'s `_request()` release-ordering, `stream.py`'s lifecycle-signal eviction under backpressure, `events.py`'s classification resync, `client.py`'s `CaptureFileStream` finalizer gap, `events.py`'s lost debug log on a deleted code path) are real but pre-existing and out of this story's scope — deferred to `deferred-work.md` rather than fixed here.
+
+Rejected: none this pass — every finding routed to `patch` (in scope) or `defer` (out of scope).
+
 ## Design Notes
 
 **Fail closed on the shapes, fail open on the structure.** An anonymizer that `repr()`s an object it does not recognize is one `BasicAuth` away from printing a password — so an unrecognized object degrades to `<TypeName>`. But redaction that flattens the payload is useless for its actual purpose, so containers, keys and ordinary values survive intact. The `NamedTuple` case is the one that makes this concrete: walked as a sequence, `BasicAuth("bob", "s3cret")` yields `["bob", "s3cret"]` with no key to match on. Check `_fields` before the sequence branch.
@@ -185,26 +201,21 @@ def is_credential_key(key: str) -> bool:
 
 Status: done
 
-**Implemented change.** A third review pass over story 1.7. No intent gap and no spec defect; twelve findings patched, all inside `diagnostics.py`, the vocabulary constant, or the tests and docs that describe them. Four closed real credential leaks — a URL nested in another URL's path, a percent-encoded nested URL, a protocol-relative reference whose credential sat in a parameter rather than the userinfo, and a caller's `secrets=` generator whose failure dropped every secret it had already yielded. A fifth patch removed a quadratic blowup that made the anonymizer take roughly a minute on a 200 KB string.
+**Implemented change.** A fourth review pass over story 1.7 (bmad-dev-auto, sprint-status action R3). No intent gap and no spec defect; five findings patched, all inside `diagnostics.py` or the tests that exercise it. Two closed real gaps in the redaction/PII contract itself: a percent-encoded URL nested in the bare path segment (not a matrix parameter) survived, and `IDENTIFYING_KEYS` was never checked by `redact_url()` even though `anonymize()` already checked it. A third closed a coverage gap in the story's own standing credential-containment test, which had never been extended to the capture-preview/capture-file paths story 1.9 added afterward. The remaining two were a userinfo-redaction edge case (present-but-empty password) and a docstring correction.
 
 **Files changed.**
-- `aiosecurityspy/src/aiosecurityspy/diagnostics.py` — `_redact_nested_urls` and `_redact_parameter_value` extracted so the path, the query and free text share one answer; `_redact_path` now redacts nested URLs; `_EMBEDDED_URL_RE` unified with `_SCHEME_RE`'s `//` rule and its scheme length-bounded; `_usable_secrets` collects incrementally; `bool`/`None` exempted from rendered-secret matching; the bytes-length read and each mapping entry guarded independently.
-- `aiosecurityspy/src/aiosecurityspy/const.py` — `REDACTED` annotated `Final[str]`.
-- `aiosecurityspy/tests/test_diagnostics.py` — eight regression tests, one per patched leak plus the linear-time guard and the widened-pattern prose guard; fifteen docstrings rewritten off their review-history references.
-- `aiosecurityspy/tests/test_credential_containment.py` — the raise assertion split per phase; two comments corrected to the measured debug-record count.
-- `aiosecurityspy/CHANGELOG.md` — the nested-URL and numeric-secret claims brought back in line with the code.
+- `aiosecurityspy/src/aiosecurityspy/diagnostics.py` — added `_redact_nested_urls_deep` (percent-decode-then-recheck, shared by the path's bare segment and parameter values) and `_is_redacted_key` (credential-or-identifying, shared by the query and path-matrix key checks); `_redact_userinfo` now distinguishes no-colon / empty-password / real-password; module docstring's `?auth=` claim corrected.
+- `aiosecurityspy/tests/test_diagnostics.py` — three regression tests: percent-encoded nested URL in the bare path, identifying keys in query/matrix position, and the three userinfo-colon cases.
+- `aiosecurityspy/tests/test_credential_containment.py` — `drive_every_path` now also fetches a capture preview and drains a capture file; `FakeResponse` gained `release()` and `__await__` to serve `_stream_bytes`'s non-context-managed `await session.get(...)` shape; `FakeServer._respond` answers the two new endpoints with byte bodies.
 
-**Review findings breakdown.** 12 patches applied (4 high, 4 medium, 4 low), 1 deferred (aiohttp re-sends `auth=` across a cross-host redirect — a research §7 leak arriving by a path this story's assertions cannot reach through a stub), 7 rejected. Three of the rejections are now on their third consecutive pass; both reviewers dropped the false "the package does not import" claim this time.
+**Review findings breakdown.** 5 patches applied (1 high, 2 medium, 2 low), 5 deferred (1 high, 3 medium, 1 low — all pre-existing, outside `diagnostics.py`: `client.py`'s `_request()` connection-release ordering, `stream.py`'s lifecycle-signal eviction under backpressure, `events.py`'s classification resync fabricating a class on a corrupted confidence, `client.py`'s `CaptureFileStream` finalizer gap, `events.py`'s lost debug log for a direct `parse_event_line()` caller), 0 rejected.
 
 **Verification performed.**
 - `uv run ruff check .` — all checks passed
-- `uv run ruff format --check .` — 23 files already formatted
-- `uv run mypy --strict src tests` — no issues in 21 source files
-- `uv run pytest -q` — 713 passed (703 before this pass; 10 added)
-- `uv run python -c "import aiosecurityspy.diagnostics"` — succeeds; imports confirmed standard-library-plus-`.const` only
-- Each of the eight code findings reproduced by direct execution before the fix and re-run after. The perf fix measured: 200 KB went from ~48s to 0.023s.
+- `uv run mypy src/aiosecurityspy/diagnostics.py` — no issues
+- `uv run pytest -q -m "not live"` — 1015 passed, 14 deselected, 0 failed (full suite, including the three new regression tests this pass added)
+- Each of the five findings reproduced by direct execution before the fix (percent-encoded path leak, `ddnsName`/`wanAddress` surviving `redact_url`, capture-media URLs unexercised by the containment sweep, fabricated `REDACTED:` on an empty password) and confirmed fixed after.
 
 **Residual risks.**
-- The deferred cross-host redirect is the one path on which a credential can still leave the process in a URL-shaped way, and it is outside what a stubbed session can assert.
-- `secrets=` remains plain substring replacement with no minimum length, so a one- or two-character declared secret still corrupts a readable dump. Rejected deliberately across three passes: the alternative silently fails to redact a genuinely short password.
-- `_MAX_DEPTH = 12` is unvalidated against a real Home Assistant diagnostics envelope. It marks rather than raises, so the failure is a truncated subtree, not a leak.
+- The five deferred findings are real per two independent reviewers but outside this story's scope (stream lifecycle, event decoding, client connection pooling) — logged to `deferred-work.md` for separate follow-up (closes DW-3, the "follow-up review still recommended" placeholder for this story).
+- The prior passes' residual risks (cross-host redirect `auth=` re-send, unbounded-length `secrets=` substring matching, unvalidated `_MAX_DEPTH`) are unchanged by this pass.

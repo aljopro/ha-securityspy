@@ -104,7 +104,7 @@ location: n/a
 source_spec: `spec-1-7-credential-safe-diagnostics.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260817-080028-f442; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: closed  # 2026-09-03: independent follow-up review run (R3, bmad-dev-auto) -- see spec-1-7-credential-safe-diagnostics.md's fourth Review Triage Log entry. 5 findings patched, 5 pre-existing out-of-scope findings newly deferred below, 0 rejected. followup_review_recommended now false.
 
 ### DW-4: Follow-up review still recommended for 1-8-server-and-camera-health-decoding after the damping cap was spent
 origin: review-budget-followup
@@ -230,3 +230,23 @@ status: documented
   `_bmad-output/planning-artifacts/research/classification-tuning-evidence.md` §8.
   **Also open (Epic 5):** none of these values is exposed through the Home Assistant
   options flow yet; story 1.5 deliberately scoped that out.
+
+- source_spec: `spec-1-7-credential-safe-diagnostics.md`
+  summary: `client.py`'s plain `_request()` (used by `async_get_server_info`, `async_get_camera_settings`, `async_set_camera_settings`, `async_set_camera_arming`, `async_get_captures`, `async_get_camera_status` — almost every call) awaits `_map_status()` from inside `async with ... as response:`, before releasing the connection, unlike `_request_bytes()`/`_stream_bytes()` which release first; a 401 triggers `_map_status`'s disambiguation probe, a second request on the same session, while the failed response still holds a connection, which can stall on a constrained pool.
+  evidence: Blind Hunter review of the diff since story 1.7's baseline (75a1137a..HEAD) found the asymmetry: `_request_bytes`/`_stream_bytes` both carry an explicit comment explaining why release must happen before `_map_status`, and `_request()` never got the same fix.
+
+- source_spec: `spec-1-7-credential-safe-diagnostics.md`
+  summary: `stream.py`'s bounded delivery queue (`_offer`, 512-item cap) evicts the oldest queued item under backpressure without distinguishing an ordinary `StreamEvent` from a one-shot lifecycle `_Signal` (`DISCONNECTED`/`AUTH_FAILED`/`CONNECTED`/`RECONNECTED`); since a signal fires exactly once per transition, an evicted signal never fires again and a consumer's view of connection state can desync permanently with no error surfaced. The drop-count logging also always increments `_dropped_events` even when the dropped item was a signal, misreporting what was lost, and `_run`'s `queue.join()` timeout on the auth-pause exit path can silently discard a queued `AUTH_FAILED` signal with no log.
+  evidence: Corroborated independently by both reviewers (Blind Hunter and Edge Case Hunter) run in parallel against the same diff, each flagging the eviction/queue-sizing hazard from a different angle (delivery semantics vs. drop-accounting/timeout-drain).
+
+- source_spec: `spec-1-7-credential-safe-diagnostics.md`
+  summary: `events.py`'s `_decode_classification` resync-by-one, on hitting a token that fails to parse as a confidence, can misattribute the next pair rather than just dropping the bad one — for `fields = ["HUMAN", "abc", "88"]` it skips `"abc"` as a label attempt, then reads `fields[1]="abc"` as a label and `fields[2]="88"` as its confidence, fabricating `classes["abc"] = 88.0`, a class name paired with a confidence that never described it and that silently feeds `EpisodeReducer`. A related case (Edge Case Hunter): the trailing unpaired field after a resync landing on an odd boundary is dropped with no debug log, unlike the module's other skip paths.
+  evidence: Both reviewers independently walked `_decode_classification`'s resync loop against the same diff and traced concrete field sequences producing the misattribution; the resync strategy itself is intentional per the docstring, but this specific fabrication case is not discussed or tested.
+
+- source_spec: `spec-1-7-credential-safe-diagnostics.md`
+  summary: `client.py`'s `CaptureFileStream` (added by story 1.9) has no finalizer safety net: if a caller obtains one from `async_get_capture_file` but never enters its `async with`/iterates it (e.g. an exception raised between the call returning and the caller consuming it), the underlying response/connection stays checked out of the aiohttp pool indefinitely, since only iteration or `aclose()` releases it and relying on garbage collection is documented as explicitly not enough.
+  evidence: Edge Case Hunter review of the diff since story 1.7's baseline traced the class's own docstring, which already documents the GC risk but not this reference-dropped variant, as a real unhandled path.
+
+- source_spec: `spec-1-7-credential-safe-diagnostics.md`
+  summary: `events.py`'s prior `_should_report`/`_REPORTED_UNKNOWN_TYPES` debug-log path for an event type with no decoded payload was removed with no replacement left in `parse_event_line` itself; a consumer calling the public `parse_event_line()` directly (not through `SecuritySpyEventStream`) loses that diagnostic entirely, though it is undocumented that the logging moved to the stream layer only.
+  evidence: Edge Case Hunter review flagged the deletion by diffing `events.py`'s history against the current `parse_event_line` call sites; confidence marked low by the reviewer since it is a debug-log regression, not a correctness one.
