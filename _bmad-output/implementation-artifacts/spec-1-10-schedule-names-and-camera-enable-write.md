@@ -8,7 +8,7 @@ followup_review_recommended: false  # fourth pass (R3) 2026-09-03: 2 low-severit
 context: ['{project-root}/_bmad-output/planning-artifacts/research/securityspy-6.21-verification.md']
 warnings: [oversized]
 baseline_revision: '917da39c23ac19ace253af4ea7dad4f507fb74b4'
-final_revision: '17a3023'
+final_revision: '32a58077'
 ---
 
 <intent-contract>
