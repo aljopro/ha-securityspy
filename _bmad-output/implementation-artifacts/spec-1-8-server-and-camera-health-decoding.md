@@ -6,7 +6,7 @@ status: 'done'
 baseline_revision: 'e0f0d5b0b5221e3ee2e084fddc466f1d63d31f8d'
 final_revision: '157cabbc0ffda02b67ae8568daaa1d1460007755'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false  # fourth pass (R3) 2026-09-03: 1 low-severity docstring patch; 10 pre-existing out-of-scope findings deferred to DW (attributed to other stories via git log -S); 3 rejected
 context: []
 warnings: [oversized]
 ---
@@ -120,6 +120,18 @@ Rejected, with reasons: the non-negative clamp being re-expressed at four call s
 
 Rejected, with reasons: `async_get_camera_status()` raising the same `SecuritySpyConnectError` for a response-shape mismatch as for a network failure (matches the pre-existing `_capture_entries` precedent this story extends, not a new defect); the `last_error`/`error` naming split between `Camera` and `CameraStatus` (explicit, justified spec design decision, not a bug); no consistency check for `camStatus` entry count (the endpoint carries no separate declared count to check against, unlike `systemInfo`'s `camera-count`); `cert_expiry_days` rejecting a fractional day count via `_as_int`'s strict-integer rule (pre-existing `_as_int` behavior used library-wide, speculative for this field's actual wire shape); `CameraStatus` carrying no camera name (explicitly scoped out by the spec's field list); the `{str(key): item for key, item in entry.items()}` type-checker workaround being duplicated from `_capture_entries` (cosmetic, matches existing convention); `data_rate`'s unit being undocumented (already disclosed honestly in the docstring; a downstream HA-sensor unit-label question belongs to a later epic, not this story); duplicate `num` entries in a `camStatus` response producing duplicate `CameraStatus` tuple entries rather than being deduped like `ServerInfo.cameras` (no AC requires dict semantics here; a per-entry tuple is a reasonable and undocumented-either-way choice).
 
+### 2026-09-03 — Review pass (fourth, follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 1: (high 0, medium 0, low 1)
+- defer: 10: (high 1, medium 6, low 3)
+- reject: 3: (high 0, medium 1, low 2)
+- addressed_findings:
+  - `[low]` `[patch]` `_as_error_code`'s docstring enumerated an exact list of "every zero spelling" (`0`, `0.0`, `"0"`, `"0.0"`, `"-0"`), but the implementation collapses through `_as_float`, so it is actually more permissive than the documented list (e.g. `"0e1"` also collapses). Reworded the docstring to describe the mechanism rather than an incomplete enumeration, so the documented contract matches what the code does.
+- Findings were surfaced by two independent reviewers (Blind Hunter, Edge Case Hunter) run in parallel against the diff since baseline `e0f0d5b0`, which by now spans this story plus twelve subsequent stories including the just-completed story 1.7 follow-up. Nine of the ten deferred findings are real defects but attributed, by `git log -S`, to other stories' own code (`_decode_cameras` is story 1.2, `visible_camera_views` is story 1.18, the capture-media paths are story 1.9, the event-stream delivery queue is story 1.3, the episode reducer is story 1.5, the permission-disambiguation probe is story 1.11) — deferred to `deferred-work.md` rather than fixed here. The tenth (health-field liveness gating vs. `connected`) touches this story's own fields but is not a violation of its explicit, exhaustively-enumerated Always clause -- a scope question for a later spec, not a defect in this one.
+
+Rejected, with reasons: `CameraStatus`/`Camera.enabled` disagreement going unflagged (the intent contract explicitly keeps the two fields independent and uncollapsed "by design" -- not a defect); a meta-observation that the diff's non-story-1.8 surface (capture streaming, the permission-disambiguation probe, the event-stream queue rewrite, the episode reducer) has no equivalent review-triage log of its own (true, but not an actionable code-level finding about this story); a speculative race in `stream.py`'s `_start`/`_restart_if_wanted` under rapid connect/disconnect churn, hedged by the reviewer's own wording ("no additional guard needed", "narrow window") as low-confidence and not clearly reproducible.
+
 ## Design Notes
 
 **`cert_expiry_days` is not guarded by the non-negative rule.** A negative day count is what an *already-expired* certificate reports, and that is exactly the diagnosable state the field exists to carry -- clamping it to `None` would hide the more urgent case. `cpu_usage`, `memory_pressure`, `current_fps`, and `data_rate` have no such legitimate negative reading, so those do fall back to `None` on a negative value, following `ServerInfo.from_api`'s existing `camera_count < 0` precedent (models.py ~line 700).
@@ -140,20 +152,20 @@ Rejected, with reasons: `async_get_camera_status()` raising the same `SecuritySp
 
 ## Auto Run Result
 
-Status: done — follow-up review pass (no implementation loopback; the story's code was already in place).
+Status: done — fourth review pass (bmad-dev-auto, sprint-status action R3), no implementation loopback.
 
-**Change made this pass.** Six review patches on top of the existing implementation, one of which is a public-behavior change: an error *description* is now decoded together with its error code on both error surfaces, so `CameraStatus.error_description` and `Camera.last_error_description` are `None` whenever their code is. The rest correct a load-bearing documentation contradiction, close a test that asserted less than it claimed, and fold whitespace-only wire values into the sentinels they obviously are.
+**Change made this pass.** One low-severity documentation patch: `_as_error_code`'s docstring claimed an exact enumerated list of "every zero spelling" it collapses to `None`, but the implementation goes through `_as_float` and is more permissive than the list (e.g. `"0e1"` also collapses). Reworded to describe the actual mechanism. Ten findings from two independent reviewers were real but attributed (via `git log -S`) to other stories' own code — `_decode_cameras` (1.2), `visible_camera_views` (1.18), the capture-media streaming paths (1.9), the event-stream delivery queue (1.3), the episode reducer (1.5), the permission-disambiguation probe (1.11) — and logged to `deferred-work.md` rather than fixed here. Three findings were rejected as either explicitly-intentional design (the `CameraStatus`/`Camera.enabled` independence, per this spec's own Always clause), non-actionable meta-observation, or a speculative low-confidence race.
 
 **Files changed:**
-- `aiosecurityspy/src/aiosecurityspy/models.py` — pair each error description with its code; strip whitespace-only error codes and `new-version`; docstrings for the pairing rule.
-- `aiosecurityspy/src/aiosecurityspy/const.py` — correct the `ENDPOINT_CAM_STATUS` provenance note to match the HAR-capture evidence the decoding rules rest on.
-- `aiosecurityspy/src/aiosecurityspy/client.py` — the `[ASSUMPTION]` block now states accurately what a stub can and cannot settle about the `format=json` question.
-- `aiosecurityspy/tests/test_models.py` — six new regression tests: description-never-outlives-code (both surfaces, every no-error spelling), description-survives-a-real-code, whitespace error code, whitespace `new-version`.
-- `aiosecurityspy/tests/test_client.py` — assert the `++camStatus` call sends no query parameters; drop a build-then-string-replace test body.
-- `aiosecurityspy/README.md`, `aiosecurityspy/CHANGELOG.md` — document the code/description pairing rule.
+- `aiosecurityspy/src/aiosecurityspy/models.py` — `_as_error_code`'s docstring corrected to match its actual (more permissive) zero-collapsing behavior; no functional change.
 
-**Review findings breakdown:** 6 patches applied (medium 3, low 3), 0 deferred, 11 rejected (5 medium, 6 low) — see the triage log for each rejection's reason. No intent gaps and no spec defects: the intent contract held under both reviewers.
+**Review findings breakdown:** 1 patch applied (low), 10 deferred (1 high, 6 medium, 3 low — all attributed to other stories), 3 rejected. No intent gaps and no spec defects.
 
-**Verification:** `uv run ruff check .` (all checks passed), `uv run ruff format --check .` (23 files already formatted), `uv run mypy --strict src tests` (no issues in 21 source files), `uv run pytest -q` (780 passed). Run from `aiosecurityspy/`, per the repo's two-suite note.
+**Verification performed.**
+- `uv run ruff check .` — all checks passed
+- `uv run mypy src/aiosecurityspy/models.py` — no issues
+- `uv run pytest -q -m "not live"` — 1015 passed, 14 deselected, 0 failed
 
-**Residual risks:** The `++camStatus` shape and the `format=json` question are still settled only by one HAR capture of one server — the `[ASSUMPTION]` markers record this, and a live-server check remains the only thing that can close them. The code/description pairing assumes a description without a code carries no information the library should surface; if a server is ever found that reports a meaningful description alongside a zero code, that is a spec decision to revisit, not a bug to patch.
+**Residual risks.**
+- The ten deferred findings are real per two independent reviewers but out of this story's scope; see `deferred-work.md` for detail on each (closes DW-4, the "follow-up review still recommended" placeholder for this story).
+- Prior passes' residual risks (the `++camStatus` shape and `format=json` question settled by only one HAR capture; the code/description pairing assumption) are unchanged by this pass.

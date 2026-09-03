@@ -112,7 +112,7 @@ location: n/a
 source_spec: `spec-1-8-server-and-camera-health-decoding.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260828-195436-607b; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: closed  # 2026-09-03: independent follow-up review run (R3, bmad-dev-auto) -- see spec-1-8-server-and-camera-health-decoding.md's fourth Review Triage Log entry. 1 finding patched, 10 pre-existing out-of-scope findings newly deferred below, 3 rejected. followup_review_recommended now false.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-13-timestamps-use-the-servers-own-timezone.md`
   summary: This story ships as a breaking pre-1.0 change (`server_timezone` required on four entry points) with no semver-bump note or CHANGELOG guidance on how it interacts with the first PyPI release the project is about to cut.
   evidence: Blind Hunter review flagged that `pyproject.toml` still shows `0.1.0` and the CHANGELOG only adds `[Unreleased]` entries; three separate CHANGELOG bullets in this story call the change "BREAKING" with no accompanying version-bump or release-process note. Not caused by this story's code, and not blocking merge, but worth a deliberate pass before the first release ships.
@@ -250,3 +250,43 @@ status: documented
 - source_spec: `spec-1-7-credential-safe-diagnostics.md`
   summary: `events.py`'s prior `_should_report`/`_REPORTED_UNKNOWN_TYPES` debug-log path for an event type with no decoded payload was removed with no replacement left in `parse_event_line` itself; a consumer calling the public `parse_event_line()` directly (not through `SecuritySpyEventStream`) loses that diagnostic entirely, though it is undocumented that the logging moved to the stream layer only.
   evidence: Edge Case Hunter review flagged the deletion by diffing `events.py`'s history against the current `parse_event_line` call sites; confidence marked low by the reviewer since it is a debug-log regression, not a correctness one.
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: (Corroborates DW-3's stream.py finding above, independently re-surfaced against a newer diff.) `stream.py`'s bounded delivery queue (`_offer`) still evicts the oldest queued item under backpressure without distinguishing an ordinary `StreamEvent` from a one-shot lifecycle `_Signal` (`DISCONNECTED`/`AUTH_FAILED`/`CONNECTED`/`RECONNECTED`), so a lifecycle transition can be silently dropped and never re-fire, permanently desyncing a consumer's view of connectivity with no error surfaced. `_run()`'s `queue.join()` timeout safety net covers only the auth-pause/natural-stop exit paths, not the ordinary reconnect-after-drop path where the race actually occurs.
+  evidence: Both reviewers (Blind Hunter and Edge Case Hunter) independently flagged this again against the diff since story 1.8's baseline, from different angles (eviction race vs. join-timeout drain path), same as the corroboration recorded against story 1.7's baseline.
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: (Corroborates DW-3's `client.py` finding above.) `_request()` (the plain JSON path used by `async_get_server_info`, `async_get_camera_settings`, `async_set_camera_settings`, `async_set_camera_arming`, `async_get_captures`, `async_get_camera_status`) still awaits `_map_status()` from inside `async with ... as response:`, before releasing the connection, unlike `_request_bytes()`/`_stream_bytes()`; a 401 triggers `_map_status`'s disambiguation probe -- a second request on the same session -- while the failed response still holds a connection, risking a stall under a constrained pool.
+  evidence: Edge Case Hunter review of the diff since story 1.8's baseline re-found the same asymmetry independently flagged against story 1.7's baseline.
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: The 401-disambiguation probe wired into every permission-checked call (`_map_status` calling `_probe_confirms_permission_denial` -> `async_get_server_info`, story 1.11) undercuts `async_get_camera_status()`'s own reason for existing -- the "cheap poll" story 1.8 built specifically to avoid parsing the heavy `++systemInfo` payload on every cycle. An account missing the required permission gets a `401` on every single `++camStatus` poll, and each one now silently doubles into a full `++systemInfo` fetch to disambiguate it, so a permission-denied consumer polling on a tight cycle fetches the expensive endpoint every cycle instead of the cheap one.
+  evidence: Blind Hunter review of the diff since story 1.8's baseline traced the interaction between `_map_status` (story 1.11) and `async_get_camera_status` (story 1.8); not a defect in either story's own code in isolation, but a real emergent cost at their intersection.
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: `_decode_cameras` (story 1.2) now raises `SecuritySpyUnsupportedVersionError` when none of the `cameralist`/`camera-list`/`camera` keys are present at all, rather than returning an empty camera list -- a behavior change for any payload genuinely omitting all three spellings, reported under a misleading "unsupported version" diagnostic for what is actually "no camera-list key located".
+  evidence: Blind Hunter review of the diff since story 1.8's baseline traced the hard-fail path in `_decode_cameras` and confirmed, via `git log -S`, that the function predates story 1.8 (introduced in story 1.2).
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: `client.py`'s `CaptureFileStream` (story 1.9) guards against sequential re-iteration (`self._iterated`) but not against a caller calling `aclose()` (or exiting `async with`) before ever iterating, then calling `__aiter__` afterward -- `content.read()` runs against an already-released response and raises an unclassified error outside the documented `SecuritySpyConnectError` contract, rather than a clear "stream already closed" `RuntimeError`.
+  evidence: Both reviewers independently flagged this against the diff since story 1.8's baseline: Blind Hunter framed it as a released-response read, Edge Case Hunter proposed the specific `if self._released: raise RuntimeError(...)` guard that is missing.
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: `client.py`'s `_request_bytes` (story 1.9) inner read loop passes `_MAX_BODY_BYTES + 1 - total` as the chunk size to `response.content.read()`; as `total` approaches the 8 MiB cap this shrinks toward reading one byte at a time, a latent performance cliff for any response landing close to (but under) the cap, unlike the fixed `_STREAM_CHUNK_BYTES`-sized reads `CaptureFileStream` uses elsewhere in the same file.
+  evidence: Blind Hunter review of the diff since story 1.8's baseline traced the shrinking read-size arithmetic directly in `_request_bytes`.
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: `Camera.current_fps`/`data_rate`/`last_error` (added by this story) are not liveness-gated the way `can_receive_audio`/`can_send_audio` are (which return `None` when `connected` is `False`) -- a disconnected camera's stale pre-disconnection numbers are surfaced as if live, with nothing in the model telling a consumer they may be stale relative to `connected=False`. Not a violation of this story's own Always clause (which enumerates only omitted/non-numeric/negative as the `None` conditions), so not fixed as part of this review pass -- but a real design-consistency gap worth a deliberate later decision, given the audio-liveness precedent already exists in the same model.
+  evidence: Blind Hunter review of the diff since story 1.8's baseline drew the direct comparison to the existing `can_receive_audio`/`can_send_audio` liveness-gating pattern in the same `Camera` dataclass.
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: `client.py`'s `_stream_bytes` (story 1.9), unlike `_request_bytes`, never calls `_check_declared_length` before opening the stream -- a server declaring an enormous `Content-Length` on a capture-file fetch is not rejected early the way an oversized JSON/preview body is, and no docstring calls out whether this asymmetry is a deliberate scope decision (streamed files are meant to be arbitrarily large) or an oversight.
+  evidence: Blind Hunter review of the diff since story 1.8's baseline compared `_stream_bytes` against `_request_bytes`'s explicit `_check_declared_length` call and found no equivalent guard or documented rationale for its absence.
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: `EpisodeReducer._absorb` (story 1.5) now always runs `self._expire(...)` even for a signal classified as unusable, whereas previously an unusable signal short-circuited before any expiry ran -- a stream of malformed/unusable classifier payloads for a given `(camera, class)` key can now trigger real episode-closure side effects (`EpisodeClosed` events) purely from the *timestamp* of noise data, a subtle expansion of what "unusable" input is allowed to affect.
+  evidence: Blind Hunter review of the diff since story 1.8's baseline traced the control-flow change in `_absorb` against what the function did before the behavior changed.
+
+- source_spec: `spec-1-8-server-and-camera-health-decoding.md`
+  summary: `client.py`'s `async_get_capture_file` (story 1.9) accepts either a `CAPTURE_FILE_BANDWIDTH_*` int constant or a hand-constructed `CaptureFileBandwidth` record for its `bandwidth` parameter; a caller passing a `CaptureFileBandwidth` with an arbitrary, non-validated `endpoint` string bypasses the constant lookup entirely and that string is used directly as the request path.
+  evidence: Edge Case Hunter review of the diff since story 1.8's baseline traced the two branches of the `bandwidth` type check and found the `isinstance(bandwidth, CaptureFileBandwidth)` branch skips the validating `capture_file_bandwidth()` lookup the `int` branch goes through.
