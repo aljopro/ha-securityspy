@@ -7,7 +7,7 @@ This file provides guidance to AI coding agents (Claude Code and others) when wo
 Two things in one repo, deliberately separate:
 
 - `custom_components/securityspy/` — a Home Assistant custom integration (HACS-distributed, not on PyPI).
-- `aiosecurityspy/` — an async, fully-typed Python client library for Ben Software's SecuritySpy HTTP/event API, also mirrored as a standalone GitHub repo (`aljopro/aiosecurityspy`, published to PyPI). See [aiosecurityspy-repo-split memory] for how commits get ported between the subtree and the standalone repo.
+- `aiosecurityspy/` — an async, fully-typed Python client library for Ben Software's SecuritySpy HTTP/event API, also mirrored as a standalone GitHub repo (`aljopro/aiosecurityspy`, published to PyPI). See "Porting `aiosecurityspy` changes to the standalone repo" below for how commits get ported between the subtree and the standalone repo.
 
 **All SecuritySpy protocol knowledge lives in the library, never in the integration** (AD-2). The integration contains zero wire-format knowledge; destructive SecuritySpy endpoints are absent from the library's public surface entirely.
 
@@ -48,6 +48,40 @@ Don't guess at protocol or architecture decisions; they're written down and a st
 - **`_bmad-output/planning-artifacts/research/securityspy-api-reference.md`** — the reverse-engineered SecuritySpy 6.x API (endpoints, event framing, bitmask decoding, arming model). This supersedes the vendor's own docs where they disagree. Read before touching `aiosecurityspy/`.
 - **`_bmad-output/planning-artifacts/architecture/architecture-ha-securityspy-2026-08-09/ARCHITECTURE-SPINE.md`** — binding architecture decisions AD-1…AD-18. If a story needs a decision not here, it's either in the spine's Deferred section or it's a hole to surface, not invent.
 - **[aiosecurityspy/docs/securityspy-openapi.yaml](aiosecurityspy/docs/securityspy-openapi.yaml)** — machine-readable OpenAPI 3.1 description of the wire API, with `x-verification` markers (`live-6.21` / `client-source` / `research-only`) per operation; CI fails if one is missing, via `scripts/validate_openapi.py`. That script also rejects duplicate YAML keys: PyYAML keeps only the last, so a second `description:` on one operation validates clean while silently discarding the first — and strict parsers (js-yaml, and therefore most editor Swagger extensions) refuse the file outright. Keep `openapi:` as the first line so those extensions detect it.
+
+## Porting `aiosecurityspy` changes to the standalone repo
+
+`aiosecurityspy/` lives in two places on purpose, and they are **not** kept in sync automatically:
+
+- `ha-securityspy/aiosecurityspy/` (this subtree) — where all story work actually happens (bmad-loop, dev-auto, manual edits).
+- `/Users/jensen/projects/aiosecurityspy` — the standalone repo (`aljopro/aiosecurityspy` on GitHub), which is what the PyPI trusted publisher and, eventually, `manifest.json`'s pinned dependency point at.
+
+**Rule: commits are ported one way only, subtree → standalone, and only as committed history — never by hand-copying files.** Hand-editing the standalone repo's working tree (copying a file over, applying a diff manually) creates uncommitted drift with no record of *which* subtree commits it corresponds to, and the only way to reconcile it later is by hand, diffing file-by-file. Don't do this even "just to keep it in sync for now" — leave the standalone repo alone between real ports.
+
+**When to port:** port after every unit of finished work in the subtree — a story, a follow-up review, a bug fix, whatever the session just committed. Don't let it accumulate "until later": do it as part of wrapping up the work, before moving on to something unrelated, and *always* before cutting a PyPI release. If you've just committed something in the subtree, port it before ending the turn/session, not on the next unrelated request.
+
+**How to port:**
+
+```bash
+# From ha-securityspy/ — split the subtree's history into a portable branch
+git subtree split -P aiosecurityspy -b lib-split
+
+# From the standalone repo — fetch and merge that branch
+cd /Users/jensen/projects/aiosecurityspy
+git fetch /Users/jensen/projects/ha-securityspy lib-split
+git merge FETCH_HEAD
+```
+
+(The very first port needed `--allow-unrelated-histories` because the GitHub repo had its own separate initial commit; later ports do not.)
+
+After merging, verify before considering the port done:
+- `git -C /Users/jensen/projects/aiosecurityspy status` — working tree clean, no stray uncommitted diff left over from a prior hand-edit (if there is one, resolve it as part of this merge, not by discarding it silently).
+- `git -C /Users/jensen/projects/aiosecurityspy log --oneline -5` — the subtree's latest commit messages appear.
+- Tests pass in the standalone repo too: `cd /Users/jensen/projects/aiosecurityspy && uv run pytest -q`.
+
+**Don't push to `origin` from the standalone repo without asking first** — same rule as any other push, per the safety rules governing this session.
+
+Before tagging a PyPI release, check `pyproject.toml`'s version in the standalone repo against what's actually been ported — `publish.yml` fails the job if the git tag doesn't equal the package metadata version.
 
 ## Non-negotiable architecture decisions
 
