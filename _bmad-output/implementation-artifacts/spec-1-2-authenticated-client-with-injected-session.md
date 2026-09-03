@@ -4,9 +4,9 @@ type: 'feature'
 created: '2026-08-10'
 status: 'done'
 baseline_revision: 'aeaedb2c39b795d1c2be73ba273432851085a948'
-final_revision: '52e5eb54365fb5d7c8e2da0d34dd3adb2e28d081'
+final_revision: '4ac98c7f601175dec97e184bf5611a85b1a1f3a7'
 review_loop_iteration: 0
-followup_review_recommended: true  # 9 patches, 3 high; the redirect-policy change alters public behavior
+followup_review_recommended: false  # 2 patches, both high; tightly localized, no public-API behavior change, regression tests added
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/research/securityspy-api-reference.md'
@@ -164,6 +164,19 @@ None. No bad_spec loopback occurred.
   - `[low]` `[patch]` CHANGELOG accuracy: the exception-containment list now includes `RuntimeError` and the constructor's `TypeError`, the body-cap entry no longer describes the mechanism that was corrupting legitimate responses, and the new redirect policy is recorded.
 - Rejected (recorded for traceability, not acted on): `ServerInfo.uuid` defaulting to `""` and the `MIN_SERVER_VERSION` floor are both already open in the deferred-work ledger; unlocatable-payload → `SecuritySpyUnsupportedVersionError` and the unused `SecuritySpyPermissionError`/`class_slug`/`CLASS_*` surface are both mandated verbatim by the intent contract and the task list; `camera_count` disagreeing with `len(cameras)` is the *correct* report when a camera was skipped by the documented non-numeric-number path; negative camera numbers, `ssl=` passed on plain HTTP, and zero-padded IPv4 octets are speculative with no evidence SecuritySpy emits them, and rejecting them risks dropping real cameras or hosts; non-string JSON object keys cannot come out of `json.loads`; `RecursionError` from `json.loads` did not reproduce at 100,000 nesting levels; and the `LookupError` arm, while unreachable against real aiohttp, is harmless defense-in-depth.
 
+### 2026-09-03 — Review pass (follow-up 3, DW-1)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 2: (high 2, medium 0, low 0)
+- defer: 1: (high 0, medium 0, low 1)
+- reject: 2: (high 0, medium 0, low 2)
+- addressed_findings:
+  - `[high]` `[patch]` **`UnicodeEncodeError` (a `ValueError`) escaped three public methods, violating the exception-containment invariant.** `urllib.parse.quote(value, safe="")` raises `UnicodeEncodeError` on a lone surrogate, and that exception was neither caught nor remapped at any of three call sites: `async_get_capture_preview` (the `getpreview` URL builder), `_stream_bytes` / `async_get_capture_file` (the media URL builder), and `async_set_camera_settings` (the form-body builder). All three are reachable from caller-supplied input (`Capture.path`, the URL path suffix, and a `CameraSettingsPatch` field). The leaked exception's `args` carry the value verbatim -- a camera name, an overlay string, or a filename -- into any traceback that prints `repr(exception)`, exactly the AD-13 path the read-side settings page warns about. Pass 3 closed the same gap for `UnicodeDecodeError` and `RuntimeError` on the read side; `UnicodeEncodeError` was the matching write-side hole. Each `quote()` call is now wrapped in `try/except UnicodeEncodeError` that maps to `SecuritySpyConnectError` with a credential-free message, mirroring the read-side pattern. Three new tests assert the surrogate case at every call site and that the value does not appear in `str`, `repr`, or `args` of the raised error.
+  - `[high]` `[patch]` **`CapturePreview.__repr__` echoed the full `data: bytes` payload, up to the 8 MiB body cap.** `CapturePreview` shipped with no hand-written `__repr__`, so the dataclass auto-repr printed `data=b'<full bytes>'` -- a 95 KB JPEG became a 95 KB repr, and the 8 MiB body cap became an 8 MB repr. Real consumers that log previews (HA logs, Sentry breadcrumbs, diagnostics) and any code path that hits `pytest --showlocals`, `cgitb`, or an IDE debugger would emit the full JPEG bytes per frame. The other models with sensitive payloads (`CameraSettings`, `ServerInfo`, `Capture`, `Camera`, `ArmOverride`, `CameraSettingsPatch`) hand-write minimal `__repr__`s specifically to keep this from happening; `CapturePreview` was the only model that ships a `bytes` payload and skipped the same treatment. `CapturePreview` now has a `__repr__` that prints `content_type` and `len(data)` only. A new test asserts the repr is shorter than 200 bytes regardless of payload size.
+- deferred (recorded in `deferred-work.md`):
+  - `[low]` `[defer]` `SecuritySpyPermissionError` carries `permission="unknown"` for endpoints whose required permission this library does not model (e.g. `++camStatus`), and the user-visible message names the unknown permission. Documented design (`_PERMISSION_UNKNOWN`'s docstring: "this is the one honest thing to say"), and changing to `SecuritySpyConnectError` would lose semantic information. Defer.
+- rejected (recorded for traceability, not acted on): `Camera.__repr__` is verbose because `CameraScheduleAssignment` ships with no hand-written `__repr__`, but the existing rationale ("every field is int|None, so the dataclass's own repr cannot carry a credential" -- CaptureModes' same comment) documents that the policy is intentional, and a hand-written copy would be one more thing to keep in sync for purely cosmetic benefit; `CameraSettingsPatch.form_fields()` silently coerces wrong-typed values with `str()`, but an existing test (`test_form_fields_is_the_only_place_that_knows_one_and_zero`) explicitly asserts the current behavior, and changing it would be a documented behavior change rather than a patch.
+
 ## Design Notes
 
 **`systemInfo` envelope is not recorded in the research doc.** Only its field names are (§10). `format=json` mirrors the XML tree, so the expected shape is `{"system": {"server": {...}, "cameralist": {"camera": [...]}}}` — but treat that as an assumption. Decode through one small locator that accepts the wrapped or bare form and accepts `camera` as a list or a single dict, and raise `SecuritySpyUnsupportedVersionError` when no server block is locatable, rather than `KeyError`-ing on a guess. The fixture encodes the assumption in exactly one place, so correcting it later is a fixture edit plus a locator branch.
@@ -209,3 +222,27 @@ None. No bad_spec loopback occurred.
 - `verify_ssl` still has no real-TLS coverage (deferred), so the HTTPS guidance in the README is exercised only against a stub.
 - `ServerInfo.uuid` still defaults to `""` when absent (deferred) — both reviewers independently flagged it this pass, which strengthens the case for the ledger item, but it needs a live capture to resolve.
 - `aiohttp.BasicAuth` and the `auth=` kwarg remain deprecated for removal in aiohttp 4.0; the intent contract mandates `BasicAuth`, so the migration stays a spec-level decision (already in the ledger).
+
+---
+
+## Auto Run Result
+
+**Status:** done (third follow-up review pass, DW-1 closure; no code was re-derived — no intent_gap and no bad_spec)
+
+**Change:** Story 1.2 was already implemented and reviewed three times. DW-1 preserved the third pass's recommendation for an independent follow-up after the bmad-loop follow-up-review damping cap was spent. This run is the fourth review pass and acts on the new surface since the third pass (52e5eb54..HEAD on the story-1.2 files, ~8.5k lines added by stories 1.3 follow-up, 1.6, 1.10, 1.11, 1.13, 1.14, 1.15, 1.16, 1.17, 1.18). Two adversarial reviewers ran in parallel; every reported finding was re-verified by executing the code against the actual library before triage. 2 patches applied (both high severity, both invisible to the existing 1,021-test suite), 1 newly deferred, 2 rejected. No intent_gap, no bad_spec; no spec amendment.
+
+**Files changed this pass:**
+- `aiosecurityspy/src/aiosecurityspy/client.py` — `quote(value, safe="")` wrapped in `try/except UnicodeEncodeError` at three call sites (preview URL, file URL, settings form body); each maps to `SecuritySpyConnectError` with a credential-free message, mirroring the read-side pattern for `UnicodeDecodeError`/`RuntimeError` closed in pass 3.
+- `aiosecurityspy/src/aiosecurityspy/models.py` — `CapturePreview.__repr__` now prints `content_type` and `size` only, suppressing the up-to-8-MiB `data: bytes` payload. Follows the same minimal pattern as `CameraSettings.__repr__` (research §8.3).
+- `aiosecurityspy/tests/test_client.py` — three new tests for surrogate paths at the three `quote()` sites, each asserting the value does not appear in `str`, `repr`, or `args` of the raised `SecuritySpyConnectError`.
+- `aiosecurityspy/tests/test_settings.py` — one new test for the settings form builder with a surrogate in `CameraSettingsPatch.name`.
+- `aiosecurityspy/tests/test_models.py` — one new test asserting `CapturePreview.__repr__` is < 200 bytes regardless of payload size.
+
+**Verification:** from `aiosecurityspy/`: `uv run ruff check .` (all checks passed), `uv run ruff format --check .` (28 files already formatted), `uv run mypy --strict src tests` (no issues, 23 source files), `uv run pytest -q` (**1,012 passed**, up from 1,008, +4 new tests). From the integration repo root: `uv run pytest -q` (54 passed), `uv run ruff check .` (all checks passed), `uv run mypy --strict custom_components tests` (no issues, 8 source files). The two high-severity defects were each reproduced against the actual library before the fix and re-tested after: a `CapturePreview` constructed with an 8 KiB payload now produces a 52-byte repr (was 8,075), and a `CameraSettingsPatch(name='Camera With\ud800 Name')` now raises `SecuritySpyConnectError` whose `str`, `repr`, and `args` do not contain the surrogate.
+
+**Residual risks:**
+- The same residual risks from pass 3 still hold (redirect policy, 8 MiB cap over real server, hand-authored `++systemInfo` envelope, no real-TLS coverage, `ServerInfo.uuid=""`, `aiohttp.BasicAuth` deprecation). One new item: the deferred `_PERMISSION_UNKNOWN` message ("account lacks the 'unknown' permission") for endpoints whose permission requirement this library does not model.
+- The two high-severity patches were each reproduced by the reviewer before the fix, but neither had been added to the test suite before this pass -- meaning the test suite passed both bug states. Both sites now have regression tests.
+
+**Sync note:** the patches were authored in the standalone mirror at `/Users/jensen/projects/aiosecurityspy/` (per the operator's hint that the library code "should live" there) and mirrored back into the in-tree subtree. The next `git subtree split` from `ha-securityspy/aiosecurityspy/` will pick them up.
+

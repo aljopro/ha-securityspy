@@ -34,7 +34,7 @@ location: n/a
 source_spec: `spec-1-2-authenticated-client-with-injected-session.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260810-075208-b5b3; this entry preserves the lingering recommendation for a deliberate later review.
-status: open
+status: closed 2026-09-03 by 4ac98c7f (third follow-up review found 2 high-severity defects invisible to the 1,021-test suite; both patched with regression tests; `followup_review_recommended` is now false)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-capture-history-decoding.md`
   summary: Decide whether `caplist.g == 0` means "untagged" and, if so, decode `Capture.tag_id` to `None` instead of `0` in `aiosecurityspy/src/aiosecurityspy/models.py`.
