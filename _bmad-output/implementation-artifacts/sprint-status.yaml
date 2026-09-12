@@ -181,14 +181,14 @@ action_items:
     status: done
   - epic: 1
     ref: "T3"
-    action: "Add repository-root CI for the integration: pytest with the 100% config-flow coverage gate, ruff, mypy, hassfest and the HACS Action."
+    action: "Add repository-root CI for the integration: pytest with the 100% config-flow coverage gate, ruff, mypy, hassfest and the HACS Action. (2026-09-12: found already done -- ci.yml (rewritten today for T2) has all of it, plus the GitHub repo topics HACS validation needed, added when the repo was first pushed.)"
     owner: "Amelia"
-    status: open
+    status: done
   - epic: 1
     ref: "T4"
-    action: "Pin actions/checkout and astral-sh/setup-uv to commit SHAs, especially in publish.yml which holds id-token write."
+    action: "Pin actions/checkout and astral-sh/setup-uv to commit SHAs, especially in publish.yml which holds id-token write. (2026-09-12: done -- ha-securityspy's ci.yml was already pinned; aiosecurityspy's ci.yml and publish.yml were not, fixed and verified green.)"
     owner: "Amelia"
-    status: open
+    status: done
   - epic: 1
     ref: "T5"
     action: "Fix test_settings_payload_is_never_logged_at_any_level -- caplog.at_level(0) is NOTSET so the test passes vacuously."
