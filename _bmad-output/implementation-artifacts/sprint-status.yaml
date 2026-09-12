@@ -141,9 +141,9 @@ action_items:
     status: open
   - epic: 1
     ref: "R1"
-    action: "Run an independent follow-up review on story 1.5 (episode reducer) -- highest risk, load-bearing for Epic 5."
+    action: "Run an independent follow-up review on story 1.5 (episode reducer) -- highest risk, load-bearing for Epic 5. (2026-09-12: reviewed; found the 2026-08-30 forward-clamp fix could freeze a track's deadline under ordinary sustained clock drift, not just anomalous skew, causing early closure. Fixed: clamp_future() replaced with a non-mutating skew_ceiling bound; regression test added. All gates green.)"
     owner: "Jensen"
-    status: open
+    status: done
   - epic: 1
     ref: "R2"
     action: "Run follow-up reviews on stories 1.3 and 1.2; close DW-1."
