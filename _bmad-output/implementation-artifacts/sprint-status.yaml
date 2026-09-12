@@ -171,9 +171,9 @@ action_items:
     status: done
   - epic: 1
     ref: "T1"
-    action: "Publish aiosecurityspy 0.2.0 to PyPI via the trusted-publisher workflow; unblocks DW-2 and real HACS installs."
+    action: "Publish aiosecurityspy 0.2.0 to PyPI via the trusted-publisher workflow; unblocks DW-2 and real HACS installs. (2026-09-12: done -- v0.2.0 tagged and released via GitHub Release, publish.yml ran clean, live on PyPI. Fixed two things found along the way: a ruff-format drift in test_diagnostics.py, and a pipefail/SIGPIPE race in ci.yml's sdist/wheel content checks. Also discovered pyproject.toml had been at 0.2.0 since 2026-08-30 with a further Unreleased section accumulated on top -- merged into one real 0.2.0 release so the published package matches its own CHANGELOG.)"
     owner: "Jensen"
-    status: open
+    status: done
   - epic: 1
     ref: "T2"
     action: "Close DW-2: drop [tool.uv.sources], delete the in-tree aiosecurityspy/ subtree, consume the published package (AD-14). After T1."
