@@ -94,6 +94,8 @@ final_revision: '917da39'
   `"settings"` and `"push_streams"` -- this is the existing fixture value decoding more
   completely, not a new fixture.
 
+- [x] [Review][Patch] (2026-09-12, independent follow-up review, R3) `async_get_captures()` (`++caplist`) documents that it can raise `SecuritySpyPermissionError` but its `_request_json` call passed no `permission=` context, unlike the sibling media methods (`async_get_capture_preview`, `async_get_capture_file`) that correctly pass `PERMISSION_NAMES[PERM_FILES]` for the same 'files'-gated capture-access surface (research §5, "Get captured footage" -> `PERM_FILES`). A denied account got `SecuritySpyPermissionError("unknown", ...)` from this one call site instead of the correctly-named `"files"` — directly undermining this story's own point for one endpoint. **Fix:** pass `permission=PERMISSION_NAMES[PERM_FILES]` (no `camera_number`, since the request spans every camera in the batch). Strengthened `test_permission_rejection_surfaces_from_the_shared_seam` to assert `err.value.permission == PERMISSION_NAMES[PERM_FILES]`, matching the assertion style already used for the sibling methods. All gates green, 1019 passed.
+
 ## Review Triage Log
 
 ### 2026-08-29 — Review pass

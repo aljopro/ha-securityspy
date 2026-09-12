@@ -77,6 +77,10 @@ final_revision: 'e40982a8b4900764faf63c20a02589d89b357546'
 
 ## Review Triage Log
 
+### 2026-09-12 — Independent follow-up review (R3, clean)
+
+Reviewed `async_set_camera_arming`, `CaptureModes.mode_string`, `ArmOverride`/`arm_override`, and their coverage in `test_settings.py` (empty-target rejection, C/M/A ordering across all 8 combinations, override-applies-to-exactly-the-targeted-modes, no-schedule-parameter, no-read-back-after-OK). No defect found; test coverage is thorough. R3 closes this story alongside 1.11 (see that spec's own entry for the one bug found and fixed there).
+
 ### 2026-08-29 — Block resolved by architecture decision (Jensen)
 
 The `Block If` this story tripped is resolved at the level it belonged to. Jensen's ruling: **schedules and overrides are two different ideas, and one control cannot express both.** AD-7 is split accordingly (`ARCHITECTURE-SPINE.md`, "[ADOPTED; split 2026-08-29]"): arm switches write the transient override exclusively and never send `schedule=`; a persistent schedule *assignment* is permitted as a separate, explicitly invoked operation; creating, editing or deleting a schedule *definition* stays forbidden, which preserves AD-7's original Prevents. Home Assistant performs no implicit record-and-restore of a prior assignment — reversal is the same explicit operation against the id FR-15 already makes readable.
