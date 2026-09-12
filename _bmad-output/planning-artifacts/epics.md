@@ -639,6 +639,125 @@ no zone name
 
 ---
 
+### Story 1.14: A 401 can mean permission, not bad credentials
+
+As a Home Assistant user running the least-privileged SecuritySpy account the security guidance recommends,
+I want a permission denial from a media or scheduling endpoint reported as a permission problem even when the server answers with `401`,
+So that I am not sent through reauth on a loop for credentials that are already correct. *(NFR-15; protects FR-27, FR-28)*
+
+**Acceptance Criteria:**
+
+**Given** an account missing the permission an endpoint requires
+**When** that endpoint answers `401` rather than `403`
+**Then** the caller receives a permission error naming the camera where one is known, and Home Assistant does not start a reauth flow
+**And** this is verified live for `++getfile`, `++getfilehb`, `++getfilelb`, `++getpreview`, and `++ssSetSchedule`
+
+**Given** credentials that are genuinely wrong
+**When** a media or scheduling endpoint is fetched
+**Then** the caller receives an authentication error, unchanged from today
+
+**Given** a successful media fetch
+**When** it completes
+**Then** exactly one HTTP request was issued -- the disambiguation only runs on an already-failed request
+
+---
+
+### Story 1.15: Capture size is megabytes, and fractional
+
+As a Python developer,
+I want a capture's file size decoded as the fractional megabyte figure the server actually sends,
+So that a consumer gets a real size for every capture instead of `None` for all but a handful. *(FR-41)*
+
+**Acceptance Criteria:**
+
+**Given** the live `caplist` sample of 10,476 entries
+**When** it is decoded
+**Then** every entry carrying an `m` value yields a size, not `None` -- as opposed to the 8 that survived the previous integer-only decode
+
+**Given** a capture of 0.945 MB
+**When** a consumer reads its size
+**Then** the unit is unambiguous from the field name alone, with no conversion applied and no fabricated byte-level precision
+
+**Given** two captures differing only in size
+**When** they are ordered
+**Then** they are separated deterministically, the same guarantee the previous field provided
+
+---
+
+### Story 1.16: Mode selects which capture modes a write targets
+
+As a Python developer,
+I want an arming write to state which capture modes it targets and what value it applies to them, matching how `++ssSetSchedule` actually behaves,
+So that Epic 6's arming controls can be built on a method that expresses arming at all. *(FR-41; enables FR-12, FR-13)*
+
+**Acceptance Criteria:**
+
+**Given** an override and a set of capture modes
+**When** the write is issued
+**Then** only those modes' overrides change on the server and the others are untouched
+
+**Given** an empty set of capture modes
+**When** a write is attempted
+**Then** it fails before any HTTP request is made, rather than returning `200 OK` having silently done nothing
+
+**Given** any call this library makes
+**When** the query string is inspected
+**Then** it contains no `schedule=` parameter -- AD-7 still holds, now verified achievable
+
+---
+
+### Story 1.17: Redact secrets and identifying detail, not just credentials
+
+As a maintainer,
+I want the anonymizer to recognise SecuritySpy's full credential-naming convention and treat identifying network detail as its own disclosure class,
+So that a diagnostics dump or a debug log never carries a password or a camera's network identity the anonymizer simply didn't know the name of. *(FR-42)*
+
+**Acceptance Criteria:**
+
+**Given** a payload containing `setPass`, `fsPass`, or `quitPass`
+**When** it is anonymised
+**Then** no value survives in the output
+
+**Given** a field named `videoPassthrough`
+**When** it is anonymised
+**Then** its value is preserved -- the rule is precise about what is credential-shaped, not "anything containing 'pass'"
+
+**Given** a URL carrying `auth=` in either form
+**When** it is anonymised
+**Then** the value does not appear in the output
+
+**Given** a key the anonymizer has never seen
+**When** it is anonymised
+**Then** the value is not disclosed -- an unrecognised field defaults to redacted, not to disclosed
+
+**Given** any field deliberately left visible in a shareable artifact
+**When** the library is released
+**Then** that field appears in a disclosure register with its justification and reduced form
+
+---
+
+### Story 1.18: One call for the cameras you may see, in their current state
+
+As a Python developer,
+I want a single, permission-scoped camera list carrying current health, computed statelessly from what the caller already holds,
+So that a consumer never has to derive the `++systemInfo`/`++camStatus` intersection itself, and never widens membership by trusting the wrong endpoint. *(FR-41; enables FR-28)*
+
+**Acceptance Criteria:**
+
+**Given** an account permitted one camera of eleven
+**When** the camera list is requested
+**Then** exactly one camera is returned and no other camera's number appears in any returned value or log record
+
+**Given** a caller that already holds membership
+**When** it refreshes health
+**Then** only `++camStatus` is issued -- the cheap poll never forces a 27 KB `++systemInfo` read
+
+**Given** a camera that is disabled and a camera whose permission has been withdrawn
+**When** the list is requested
+**Then** both are absent and the result is identical -- the two are indistinguishable by construction, not by accident
+
+---
+
 ## Epic 2: Connect and Model
 
 A user adds their SecuritySpy server through the Home Assistant UI and their cameras appear as correctly-named devices beneath one server hub, with no manual renaming and no entity named after an IP address.

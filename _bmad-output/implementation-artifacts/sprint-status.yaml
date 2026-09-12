@@ -156,9 +156,9 @@ action_items:
     status: done
   - epic: 1
     ref: "D1"
-    action: "Add stories 1.14-1.18 to epics.md Epic 1 and regenerate epic-1-context.md so planning artifacts match the 18 stories delivered."
+    action: "Add stories 1.14-1.18 to epics.md Epic 1 and regenerate epic-1-context.md so planning artifacts match the 18 stories delivered. (2026-09-12: done -- stories 1.14-1.18 added to epics.md with full Given/When/Then acceptance criteria drawn from their specs; epic-1-context.md's Stories list, Technical Decisions and Cross-Story Dependencies sections updated to match.)"
     owner: "Paige"
-    status: open
+    status: done
   - epic: 1
     ref: "D2"
     action: "Correct the 10207 permissions-bitmask arithmetic in research/securityspy-api-reference.md section 9."
@@ -166,9 +166,9 @@ action_items:
     status: done
   - epic: 1
     ref: "D3"
-    action: "Add a repository-root README.md; hacs.json sets render_readme true and no README exists."
+    action: "Add a repository-root README.md; hacs.json sets render_readme true and no README exists. (2026-09-12: done -- README.md added covering status, requirements, HACS/manual install, setup, roadmap, and architecture. Also added a repo-root LICENSE, an adjacent gap noticed while writing the README: hacs.json/manifest.json point to a public repo with no license file outside the aiosecurityspy subtree.)"
     owner: "Paige"
-    status: open
+    status: done
   - epic: 1
     ref: "T1"
     action: "Publish aiosecurityspy 0.2.0 to PyPI via the trusted-publisher workflow; unblocks DW-2 and real HACS installs."

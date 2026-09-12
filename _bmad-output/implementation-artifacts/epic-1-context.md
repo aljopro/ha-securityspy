@@ -21,6 +21,11 @@ Build and publish `aiosecurityspy`, a standalone, async, fully-typed Python libr
 - Story 1.11: A permission denial is not an authentication failure
 - Story 1.12: Decode the camera inventory a real server actually sends
 - Story 1.13: Timestamps use the server's own timezone
+- Story 1.14: A 401 can mean permission, not bad credentials
+- Story 1.15: Capture size is megabytes, and fractional
+- Story 1.16: Mode selects which capture modes a write targets
+- Story 1.17: Redact secrets and identifying detail, not just credentials
+- Story 1.18: One call for the cameras you may see, in their current state
 
 ## Requirements & Constraints
 
@@ -42,6 +47,10 @@ Build and publish `aiosecurityspy`, a standalone, async, fully-typed Python libr
 - **Object Class normalization** (AD-9): class strings pass through the library's single `class_slug()` function wherever they enter a permanent key; `HUMAN`/`VEHICLE`/`ANIMAL` are constants, not a closed type.
 - **Data models**: frozen, fully-typed dataclasses with `from_api()` constructors; raw dicts never cross the library boundary; timestamps are timezone-aware `datetime`, decoded using the server's own published UTC offset rather than an assumed UTC, with the daylight-saving limitation documented.
 - **Camera inventory decoding must be validated against a captured real-server payload**, not only an author-written fixture, and an unrecognized envelope shape must surface as a decode failure rather than a silently empty inventory.
+- **A permission denial is not reliably a `403`**: which HTTP status a denial carries is a property of the individual endpoint, not its kind — some endpoints (including scheduling) answer `401` for a missing permission, byte-identical to a wrong-password `401`. The library disambiguates by re-probing an endpoint the account is known to be allowed, never by parsing the response body, and never caches the verdict.
+- **Numeric and mode-shaped fields are decoded and modeled as the server actually sends and reads them**, not as their name might suggest: a size field that is a fractional megabyte count is not forced into an integer, and a write field that selects *which* modes a request targets is not modeled as the armed state being assigned. Getting either wrong either silently drops nearly all real data or makes a write a no-op the server reports as successful.
+- **Anonymization is redact-by-default, categorized by field meaning, not name-listed**: an unrecognized field defaults to redacted rather than disclosed, SecuritySpy's `*Pass` naming convention is recognized as a category, and identifying-but-not-secret network detail is its own disclosure class distinct from credentials. Anything deliberately left visible is recorded in a disclosure register with its justification.
+- **Camera visibility is one computation, stateless, and permission-scoped**: the library exposes a single call that intersects `++systemInfo` membership (the only permission-scoped surface) with `++camStatus` health, discarding any non-member row at the point of receipt. A disabled camera and a camera the account cannot see are the same case by construction, and capability predicates over the permission bitmask must distinguish *permission* from mere *liveness* (an offline camera loses and regains certain permission bits on reconnect).
 - **Stack**: `src/` layout, hatchling, `pyproject.toml`-only, uv, ruff, `mypy --strict`, GitHub Actions with PyPI trusted-publisher OIDC; aiohttp is caller-injected (`>=3.12,<4`); test fixtures come from recorded protocol frames (HAR / captured streams), not hand-authored ones.
 
 ## Cross-Story Dependencies
@@ -50,4 +59,5 @@ Build and publish `aiosecurityspy`, a standalone, async, fully-typed Python libr
 - Story 1.5 (episode reducer) is consumed directly by Epic 5 (Live Detection); raw per-signal data must never reach a consumer's state machine.
 - Story 1.4 (capture history) and Story 1.13 (timezone-correct timestamps) together are what makes Epic 4's Observation Record correct immediately after a Home Assistant restart.
 - Story 1.7 (diagnostics anonymizer) and Story 1.11 (permission vs. auth distinction) are both consumed by the integration's exception-mapping seam (AD-6) and by Epic 2/3's reauth and error-reporting flows.
+- Stories 1.14–1.18 were added after a live-server verification pass (research §5 and beyond) found real-server behavior diverging from what 1.1–1.13 had assumed: 1.14 extends Story 1.11's permission/auth distinction to endpoints that deny with `401` instead of `403`; 1.15 corrects Story 1.4's capture-size decoding; 1.16 corrects Story 1.6's arming write semantics and is what Epic 6's arming stories (6.1, 6.4) actually build on; 1.17 widens Story 1.7's anonymizer to the categories AD-13 was expanded to cover; 1.18 gives Epic 2/3 the single permission-scoped camera list their entity-creation and health-reporting stories (2.4, 2.7) depend on.
 - No story in this epic may add Home Assistant imports or depend on anything outside the library; every downstream epic depends on this one, never the reverse.
