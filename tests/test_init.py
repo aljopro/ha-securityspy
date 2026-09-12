@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from aiosecurityspy import (
@@ -16,15 +16,15 @@ from aiosecurityspy import (
 )
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_SSL, CONF_VERIFY_SSL
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
-from custom_components.securityspy.const import DOMAIN
+from custom_components.securityspy.const import DOMAIN, RECONCILE_INTERVAL
+from custom_components.securityspy.coordinator import SecuritySpyDataUpdateCoordinator
 
 from .conftest import MOCK_USER_INPUT, SERVER_NAME, SERVER_UUID, https_input
 
 if TYPE_CHECKING:
-    from unittest.mock import MagicMock
-
     from homeassistant.core import HomeAssistant
 
 
@@ -305,3 +305,61 @@ async def test_setup_retries_on_an_unmodelled_library_error(
 
     assert entry.state is ConfigEntryState.SETUP_RETRY
     assert entry.error_reason_translation_key == "unknown"
+
+
+async def test_setup_constructs_and_starts_the_coordinator(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """Setup builds the coordinator, starts it, and stores it on runtime_data.
+
+    `coordinator.data is entry.runtime_data.server` proves the constructor
+    seeded from the one server `__init__.py` already fetched, with no
+    divergent second fetch: had `async_start` re-fetched, `coordinator.data`
+    could in principle be a *different* `ServerInfo` object than the one
+    stored as `.server`, even if the two compared equal.
+    """
+    entry = _add_entry(hass)
+
+    with patch(
+        "custom_components.securityspy.SecuritySpyDataUpdateCoordinator.async_start",
+        autospec=True,
+    ) as async_start:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert isinstance(entry.runtime_data.coordinator, SecuritySpyDataUpdateCoordinator)
+    async_start.assert_awaited_once()
+    assert entry.runtime_data.coordinator.data is entry.runtime_data.server
+    # Only the one `test-before-setup` call: the coordinator's own startup
+    # path must not add a second.
+    assert mock_client.async_get_server_info.await_count == 1
+
+
+async def test_unload_cancels_the_coordinators_reconciliation_timer(
+    hass: HomeAssistant,
+    mock_client: MagicMock,  # noqa: ARG001 - keeps the client patched for setup
+) -> None:
+    """Unloading the entry cancels the coordinator's periodic timer.
+
+    Asserted through the real `async_track_time_interval` unsub rather than a
+    mock: `_async_process_on_unload` runs the callback registered in
+    `async_start` regardless of `PLATFORMS` being empty, and cancelling that
+    unsub is what stops the timer from firing after unload.
+    """
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data.coordinator
+
+    with patch.object(
+        coordinator,
+        "_async_reconcile",
+        wraps=getattr(coordinator, "_async_reconcile"),  # noqa: B009
+    ) as reconcile:
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()
+
+        async_fire_time_changed(hass, dt_util.utcnow() + RECONCILE_INTERVAL * 2)
+        await hass.async_block_till_done()
+
+    reconcile.assert_not_called()

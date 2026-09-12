@@ -4,8 +4,10 @@ Setup owns the one exception-mapping seam required by AD-6: library-typed
 errors become Home Assistant config-entry failures here and nowhere else, so a
 future coordinator or platform never re-decides what a connect error means.
 
-No coordinator, platform or entity exists yet -- :data:`PLATFORMS` is
-deliberately empty until story 2.3 introduces them.
+The coordinator (``coordinator.py``) and the device-identity builders
+(``entity.py``) exist as of story 2.3, and setup starts the coordinator here
+before forwarding platform setups. No entity *class* and no platform module
+exist yet -- :data:`PLATFORMS` stays empty until story 2.4.
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ from homeassistant.exceptions import (
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN
+from .coordinator import SecuritySpyDataUpdateCoordinator
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -48,8 +51,8 @@ if TYPE_CHECKING:
     from aiosecurityspy import ServerInfo
     from homeassistant.core import HomeAssistant
 
-#: Empty until story 2.3 adds the coordinator and the first platforms. Forwarding
-#: an empty list is a no-op, so the setup/unload shape is already the final one.
+#: Empty until story 2.4 adds the first platform. Forwarding an empty list is
+#: a no-op, so the setup/unload shape is already the final one.
 PLATFORMS: list[Platform] = []
 
 
@@ -63,6 +66,7 @@ class SecuritySpyRuntimeData:
 
     client: SecuritySpyClient
     server: ServerInfo
+    coordinator: SecuritySpyDataUpdateCoordinator
 
 
 #: Typed config entry. Every function that takes an entry uses this alias, so
@@ -186,7 +190,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
         # nobody has classified yet.
         raise ConfigEntryNotReady(translation_domain=DOMAIN, translation_key="unknown") from err
 
-    entry.runtime_data = SecuritySpyRuntimeData(client=client, server=server)
+    coordinator = SecuritySpyDataUpdateCoordinator(hass, entry, client, server)
+    entry.runtime_data = SecuritySpyRuntimeData(
+        client=client, server=server, coordinator=coordinator
+    )
+
+    # Registers devices from the server already fetched above -- no second
+    # fetch (see coordinator.async_start's own docstring) -- and schedules the
+    # periodic reconciliation timer that keeps them current without a reload.
+    await coordinator.async_start()
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -202,6 +215,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry)
         Whether every platform unloaded cleanly.
 
     """
-    # The client owns no task, socket or timer of its own -- the session belongs
-    # to Home Assistant -- so unloading the platforms is the whole job for now.
+    # No explicit coordinator shutdown call is needed here: the coordinator's
+    # reconciliation timer was registered through `entry.async_on_unload` in
+    # `async_start`, and `ConfigEntry._async_process_on_unload` runs those
+    # callbacks unconditionally on unload -- independent of whether any
+    # platform was forwarded, so an empty `PLATFORMS` does not skip it.
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

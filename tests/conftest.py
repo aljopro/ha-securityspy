@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Final
 from unittest.mock import MagicMock, patch
 
 import pytest
-from aiosecurityspy import ServerInfo
+from aiosecurityspy import Camera, ServerInfo
 from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -65,6 +65,48 @@ def make_server_info(uuid: str = SERVER_UUID, name: str = SERVER_NAME) -> Server
         version="6.20",
         version_info=(6, 20),
         camera_count=0,
+    )
+
+
+def make_camera(number: int, name: str, *, enabled: bool = True) -> Camera:
+    """Build a ``Camera`` without going near the wire."""
+    return Camera(
+        number=number,
+        name=name,
+        connected=True,
+        enabled=enabled,
+        permissions=0,
+    )
+
+
+def make_server_info_with_cameras(
+    uuid: str = SERVER_UUID,
+    name: str = SERVER_NAME,
+    cameras: tuple[Camera, ...] = (),
+) -> ServerInfo:
+    """Build a ``ServerInfo`` carrying the given cameras, keyed by number.
+
+    Args:
+        uuid: The server's identity.
+        name: The server's display name.
+        cameras: The cameras to inventory; defaults to two, matching the
+            "N cameras" row of the story's I/O matrix.
+
+    Returns:
+        A `ServerInfo` with `cameras` populated from the given entries.
+
+    """
+    entries = cameras or (
+        make_camera(1, "Driveway"),
+        make_camera(2, "Front Door"),
+    )
+    return ServerInfo(
+        uuid=uuid,
+        name=name,
+        version="6.20",
+        version_info=(6, 20),
+        camera_count=len(entries),
+        cameras={camera.number: camera for camera in entries},
     )
 
 
