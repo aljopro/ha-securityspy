@@ -176,9 +176,9 @@ action_items:
     status: done
   - epic: 1
     ref: "T2"
-    action: "Close DW-2: drop [tool.uv.sources], delete the in-tree aiosecurityspy/ subtree, consume the published package (AD-14). After T1."
+    action: "Close DW-2: drop [tool.uv.sources], delete the in-tree aiosecurityspy/ subtree, consume the published package (AD-14). After T1. (2026-09-12: done -- subtree deleted, pyproject.toml pins aiosecurityspy==0.2.0 matching manifest.json, ci.yml collapsed to one lane against the published package, uv.lock regenerated. Verified: uv sync pulls from PyPI, all gates green.)"
     owner: "Amelia"
-    status: open
+    status: done
   - epic: 1
     ref: "T3"
     action: "Add repository-root CI for the integration: pytest with the 100% config-flow coverage gate, ruff, mypy, hassfest and the HACS Action."
