@@ -51,7 +51,7 @@ The full plan lives in the [PRD](_bmad-output/planning-artifacts/prds/prd-ha-sec
 
 ## Architecture
 
-All SecuritySpy protocol knowledge — endpoint URLs, event-stream framing, bitmask and capture decoding, credential-safe diagnostics — lives in [`aiosecurityspy`](aiosecurityspy/), a standalone, async, fully-typed Python library published independently on PyPI. This integration consumes it and adds nothing that talks to SecuritySpy's wire format directly. See [`aiosecurityspy/README.md`](aiosecurityspy/README.md) if you want to use the library outside Home Assistant, or [`docs/securityspy-openapi.yaml`](docs/securityspy-openapi.yaml) for the reverse-engineered API description itself.
+All SecuritySpy protocol knowledge — endpoint URLs, event-stream framing, bitmask and capture decoding, credential-safe diagnostics — lives in [`aiosecurityspy`](https://github.com/aljopro/aiosecurityspy), a standalone, async, fully-typed Python library [published independently on PyPI](https://pypi.org/project/aiosecurityspy/). This integration only ever consumes the published package (never an in-tree copy) and adds nothing that talks to SecuritySpy's wire format directly. See the library's own README if you want to use it outside Home Assistant, or its `docs/securityspy-openapi.yaml` for the reverse-engineered API description itself.
 
 ## Contributing / issues
 

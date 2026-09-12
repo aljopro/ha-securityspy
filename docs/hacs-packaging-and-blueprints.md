@@ -102,34 +102,18 @@ The scheduled run is not decoration: it is how you learn that an HA release brok
 
 > **Quality-scale gap to close:** hassfest no longer checks `parallel-updates` (it moved to the Home Assistant **pylint plugin** in HA 2026.6). Add a pylint job using HA's plugin, or that Silver rule silently goes unverified.
 
-### Two test suites, two scopes — always run the library's scoped
+### One test suite — `aiosecurityspy` is a dependency, never in-tree
 
-This repo has two `pyproject.toml` files with incompatible pytest configs, and running the wrong one against the wrong tests fails loudly and confusingly:
+This repo used to carry `aiosecurityspy` as an in-tree subtree with its own `pyproject.toml`, which meant two incompatible pytest configs (`asyncio_mode = "auto"` here for `pytest-homeassistant-custom-component` vs. the library's own `strict` mode) and a real trap: running plain `pytest` against the library's tests from the repo root picked up the wrong config and errored every test at setup. That subtree is gone (T2, 2026-09-12): `aiosecurityspy` is consumed exclusively as the published PyPI package, pinned identically in this repo's `pyproject.toml` dev dependency and in `manifest.json`'s `requirements` (`scripts/check_library_pin.py` enforces the pin resolves on PyPI). There is only one `pyproject.toml`/test suite in this repo now.
 
-| | Root (`ha-securityspy/pyproject.toml`) | Library (`aiosecurityspy/pyproject.toml`) |
-|---|---|---|
-| Tests | `tests/` (the integration) | `aiosecurityspy/tests/` (the library) |
-| `asyncio_mode` | `auto` | `strict` |
-| Why | `pytest-homeassistant-custom-component`'s fixtures are plain async functions with no explicit marker; `auto` is required for them to run at all | the library has no dependency on that plugin and marks its own coroutines explicitly |
-| Extra | — | `filterwarnings = ["error"]` — a deprecation warning fails the run rather than accumulating silently |
-
-Invoking plain `pytest` (or `pytest aiosecurityspy/tests`) from the repo root picks up the **root** config regardless of which tests you point it at. Pointed at the library's tests, that collides: `pytest-asyncio`'s strict-mode markers on the library's coroutines fight `pytest-homeassistant-custom-component`'s fixture setup, and all ~700 library tests error at setup — not fail, error, before the test body ever runs. This is a scoping problem, not a code problem; it reproduces identically on old and new library code.
-
-Always run the library's suite from inside `aiosecurityspy/`, so it picks up its own config:
-
-```bash
-uv run --directory aiosecurityspy pytest -q
-# or: cd aiosecurityspy && uv run pytest -q
-```
-
-This is exactly what `.bmad-loop/policy.toml`'s `[verify].commands` already do — the loop's automated gate has always been scoped correctly. The trap is only for a human or an ad hoc agent invocation from the repo root.
+To change the library, or to test an unreleased change here before it ships as a stable release, see AGENTS.md's "Working with `aiosecurityspy`" section.
 
 ### Library release (PyPI trusted publishing)
 
-No API tokens, no secrets — OIDC.
+No API tokens, no secrets — OIDC. This lives entirely in the standalone `aljopro/aiosecurityspy` repo, not here.
 
 ```yaml
-# aiosecurityspy/.github/workflows/publish.yml
+# aiosecurityspy/.github/workflows/publish.yml (in the standalone repo)
 on:
   release:
     types: [published]

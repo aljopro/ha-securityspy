@@ -4,84 +4,46 @@ This file provides guidance to AI coding agents (Claude Code and others) when wo
 
 ## What this repo is
 
-Two things in one repo, deliberately separate:
-
 - `custom_components/securityspy/` — a Home Assistant custom integration (HACS-distributed, not on PyPI).
-- `aiosecurityspy/` — an async, fully-typed Python client library for Ben Software's SecuritySpy HTTP/event API, also mirrored as a standalone GitHub repo (`aljopro/aiosecurityspy`, published to PyPI). See "Porting `aiosecurityspy` changes to the standalone repo" below for how commits get ported between the subtree and the standalone repo.
+- Its SecuritySpy protocol client, `aiosecurityspy`, is **not** in this repo. It lives entirely in the standalone `aljopro/aiosecurityspy` repo, published to PyPI, and this repo always consumes the published package (AD-14) — see "Working with `aiosecurityspy`" below.
 
 **All SecuritySpy protocol knowledge lives in the library, never in the integration** (AD-2). The integration contains zero wire-format knowledge; destructive SecuritySpy endpoints are absent from the library's public surface entirely.
 
 ## Commands
 
-There are **two independent `pyproject.toml`/test suites with incompatible pytest configs** (root uses `asyncio_mode = "auto"` for `pytest-homeassistant-custom-component`; the library uses `asyncio_mode = "strict"` with `filterwarnings = ["error"]`). Running the wrong one against the wrong tests fails at collection/setup, not with a normal test failure — always scope explicitly:
-
 ```bash
-# Integration tests (from repo root)
+# Integration tests
 uv run pytest -q
 uv run pytest tests/test_config_flow.py -q          # single file
 uv run pytest tests/test_config_flow.py::test_name -q  # single test
 
-# Library tests — MUST run from inside aiosecurityspy/, never `pytest aiosecurityspy/tests` from root
-uv run --directory aiosecurityspy pytest -q
-# or: cd aiosecurityspy && uv run pytest -q
-
-# Lint / format / types (run in both the root and aiosecurityspy/ as needed)
+# Lint / format / types
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy --strict custom_components tests        # root
-uv run mypy --strict src tests                      # inside aiosecurityspy/
+uv run mypy custom_components tests
 
-# Library-only: validate the OpenAPI description, build distributions
-# (strict YAML + OpenAPI 3.1 + x-verification coverage; plain openapi_spec_validator
-#  is NOT enough -- it loads via PyYAML, which silently drops duplicate keys)
-uv run --directory aiosecurityspy python ../scripts/validate_openapi.py
-uv run --directory aiosecurityspy uv build
+# The manifest's aiosecurityspy pin must exist on PyPI
+uv run --no-project python scripts/check_library_pin.py
 ```
 
-Tests import the in-repo library via an editable path source (`aiosecurityspy = { path = "aiosecurityspy", editable = true }` in the root `pyproject.toml`), so a library change is verified against the integration in the same commit — never bump `manifest.json`'s pinned `aiosecurityspy==` version without a matching change here.
+## Working with `aiosecurityspy`
+
+`aiosecurityspy` is developed in its own repo, at `/Users/jensen/projects/aiosecurityspy` locally (`aljopro/aiosecurityspy` on GitHub) — never here. This repository's `pyproject.toml` dev dependency and `custom_components/securityspy/manifest.json`'s `requirements` pin the **exact same** published version; bump both together, never one without the other (`scripts/check_library_pin.py` enforces the manifest half exists on PyPI).
+
+**To change the library:** make the change in the standalone repo, run its own gates there (ruff, ruff format, mypy --strict, pytest), bump its `pyproject.toml` version, and cut a release the same way as any other (`git tag vX.Y.Z`, push, then a GitHub Release — its `publish.yml` runs the gates again and publishes via PyPI trusted-publisher OIDC). Then bump the pin here to match and re-run this repo's tests.
+
+**To test an unreleased library change against this integration**, without waiting for a stable release: publish it from the standalone repo as a PyPI **pre-release** (e.g. `0.2.1a1` — `pip`/`uv` never resolve a pre-release unless pinned to that exact version, so this cannot leak to a real user). Point this repo's `manifest.json` requirement and `pyproject.toml` dev dependency at that exact pre-release version, `uv sync`, and run the tests here. Once the real release ships, bump both pins to the stable version and never leave a pre-release pin in place on `main`.
+
+**Never** hand-copy library source into this repo, and never re-add a local editable path source (`[tool.uv.sources]`) for it — that was the previous arrangement (an in-tree subtree) and it drifted from the standalone repo by 1,620 lines with nothing going red before it was replaced by the always-published-package model above.
 
 ## Documentation map — read before writing code
 
 Don't guess at protocol or architecture decisions; they're written down and a story should not re-litigate them. Start at [docs/index.md](docs/index.md), which routes to the right document. The essentials:
 
 - **[docs/ha-integration-reference.md](docs/ha-integration-reference.md)** — HA integration patterns written the way *this* project's architecture requires (file structure, `runtime_data`, push-fed coordinator, config/reauth/reconfigure flows, exception taxonomy, quality-scale rules). Read before touching `custom_components/`.
-- **`_bmad-output/planning-artifacts/research/securityspy-api-reference.md`** — the reverse-engineered SecuritySpy 6.x API (endpoints, event framing, bitmask decoding, arming model). This supersedes the vendor's own docs where they disagree. Read before touching `aiosecurityspy/`.
-- **`_bmad-output/planning-artifacts/architecture/architecture-ha-securityspy-2026-08-09/ARCHITECTURE-SPINE.md`** — binding architecture decisions AD-1…AD-18. If a story needs a decision not here, it's either in the spine's Deferred section or it's a hole to surface, not invent.
-- **[aiosecurityspy/docs/securityspy-openapi.yaml](aiosecurityspy/docs/securityspy-openapi.yaml)** — machine-readable OpenAPI 3.1 description of the wire API, with `x-verification` markers (`live-6.21` / `client-source` / `research-only`) per operation; CI fails if one is missing, via `scripts/validate_openapi.py`. That script also rejects duplicate YAML keys: PyYAML keeps only the last, so a second `description:` on one operation validates clean while silently discarding the first — and strict parsers (js-yaml, and therefore most editor Swagger extensions) refuse the file outright. Keep `openapi:` as the first line so those extensions detect it.
-
-## Porting `aiosecurityspy` changes to the standalone repo
-
-`aiosecurityspy/` lives in two places on purpose, and they are **not** kept in sync automatically:
-
-- `ha-securityspy/aiosecurityspy/` (this subtree) — where all story work actually happens (bmad-loop, dev-auto, manual edits).
-- `/Users/jensen/projects/aiosecurityspy` — the standalone repo (`aljopro/aiosecurityspy` on GitHub), which is what the PyPI trusted publisher and, eventually, `manifest.json`'s pinned dependency point at.
-
-**Rule: commits are ported one way only, subtree → standalone, and only as committed history — never by hand-copying files.** Hand-editing the standalone repo's working tree (copying a file over, applying a diff manually) creates uncommitted drift with no record of *which* subtree commits it corresponds to, and the only way to reconcile it later is by hand, diffing file-by-file. Don't do this even "just to keep it in sync for now" — leave the standalone repo alone between real ports.
-
-**When to port:** port after every unit of finished work in the subtree — a story, a follow-up review, a bug fix, whatever the session just committed. Don't let it accumulate "until later": do it as part of wrapping up the work, before moving on to something unrelated, and *always* before cutting a PyPI release. If you've just committed something in the subtree, port it before ending the turn/session, not on the next unrelated request.
-
-**How to port:**
-
-```bash
-# From ha-securityspy/ — split the subtree's history into a portable branch
-git subtree split -P aiosecurityspy -b lib-split
-
-# From the standalone repo — fetch and merge that branch
-cd /Users/jensen/projects/aiosecurityspy
-git fetch /Users/jensen/projects/ha-securityspy lib-split
-git merge FETCH_HEAD
-```
-
-(The very first port needed `--allow-unrelated-histories` because the GitHub repo had its own separate initial commit; later ports do not.)
-
-After merging, verify before considering the port done:
-- `git -C /Users/jensen/projects/aiosecurityspy status` — working tree clean, no stray uncommitted diff left over from a prior hand-edit (if there is one, resolve it as part of this merge, not by discarding it silently).
-- `git -C /Users/jensen/projects/aiosecurityspy log --oneline -5` — the subtree's latest commit messages appear.
-- Tests pass in the standalone repo too: `cd /Users/jensen/projects/aiosecurityspy && uv run pytest -q`.
-
-**Don't push to `origin` from the standalone repo without asking first** — same rule as any other push, per the safety rules governing this session.
-
-Before tagging a PyPI release, check `pyproject.toml`'s version in the standalone repo against what's actually been ported — `publish.yml` fails the job if the git tag doesn't equal the package metadata version.
+- **`_bmad-output/planning-artifacts/research/securityspy-api-reference.md`** — the reverse-engineered SecuritySpy 6.x API (endpoints, event framing, bitmask decoding, arming model). This supersedes the vendor's own docs where they disagree. Read before touching anything that consumes `aiosecurityspy`, or before changing the library itself in its own repo.
+- **`_bmad-output/planning-artifacts/architecture/architecture-ha-securityspy-2026-08-09/ARCHITECTURE-SPINE.md`** — binding architecture decisions AD-1…AD-20. If a story needs a decision not here, it's either in the spine's Deferred section or it's a hole to surface, not invent.
+- **`aiosecurityspy/docs/securityspy-openapi.yaml`** in the standalone repo — machine-readable OpenAPI 3.1 description of the wire API, with `x-verification` markers (`live-6.21` / `client-source` / `research-only`) per operation, validated by that repo's own CI.
 
 ## Non-negotiable architecture decisions
 
@@ -114,7 +76,7 @@ These have each caused real bugs and are easy to reintroduce:
 
 ## Code architecture
 
-### `aiosecurityspy/src/aiosecurityspy/`
+### `aiosecurityspy` (the published package this repo depends on, developed in its own repo)
 - `client.py` — `SecuritySpyClient`, the HTTP surface (session-injected, never creates/closes one).
 - `connection.py` — low-level HTTP transport/auth handling shared by client and stream.
 - `stream.py` — the event-stream reader: CR framing, heartbeat watchdog, exponential backoff, lifecycle callbacks (`on_connected`/`on_disconnected`/`on_reconnected`/`on_auth_failed`).
