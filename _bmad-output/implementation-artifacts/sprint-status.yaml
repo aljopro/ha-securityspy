@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-09T22:17:18-05:00
-last_updated: 2026-08-30T22:18:29-05:00
+last_updated: 2026-09-12T00:00:00-05:00
 project: ha-securityspy
 project_key: NOKEY
 tracking_system: file-system
@@ -71,7 +71,7 @@ development_status:
   epic-2: in-progress
   2-1-add-a-securityspy-server-through-the-ui: done
   2-2-connect-over-https-with-a-verification-toggle: done
-  2-3-cameras-appear-as-devices-under-one-server-hub: backlog
+  2-3-cameras-appear-as-devices-under-one-server-hub: ready-for-dev
   2-4-see-server-and-camera-health: backlog
   2-5-know-when-a-securityspy-update-is-available: backlog
   2-6-live-video-exists-but-stays-out-of-the-way: backlog
