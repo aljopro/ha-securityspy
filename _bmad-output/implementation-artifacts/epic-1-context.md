@@ -4,7 +4,7 @@
 
 ## Goal
 
-Build and publish `aiosecurityspy`, a standalone, async, fully-typed Python library that talks to a SecuritySpy server with Home Assistant nowhere in sight: querying cameras and capture history, consuming the live event stream without hanging, and decoding what SecuritySpy actually means (bitmasks, schedules, settings asymmetries, timestamps). This epic ships first because retrofitting protocol parsing out of an integration after the fact is the large refactor that blocks Bronze quality-scale compliance, and because a maintained SecuritySpy library is this project's durable, reusable contribution — nobody else has one. Every later epic depends on this library and must never duplicate or work around its knowledge of the wire protocol.
+A Python developer can talk to a SecuritySpy server from an ordinary script — query its cameras and capture history, consume its live event stream without the client hanging, and decode what SecuritySpy actually means — with Home Assistant nowhere in sight. This epic exists first because retrofitting a library after writing protocol parsing inside an integration is the large, thankless refactor that blocks Bronze, and because a maintained SecuritySpy library is the project's durable contribution: nobody else has one. It owns all protocol knowledge (wire formats, endpoint URLs, bitmask decoding) so that no other part of the system needs to know them.
 
 ## Stories
 
@@ -26,38 +26,42 @@ Build and publish `aiosecurityspy`, a standalone, async, fully-typed Python libr
 - Story 1.16: Mode selects which capture modes a write targets
 - Story 1.17: Redact secrets and identifying detail, not just credentials
 - Story 1.18: One call for the cameras you may see, in their current state
+- Story 1.19: Relay live video without handing out credentials
 
 ## Requirements & Constraints
 
-- The library is a separately published PyPI package, OSI-licensed, built in CI from a tagged release via trusted-publisher OIDC (no stored API token), importable with no Home Assistant present anywhere on the system.
-- Fully async; accepts a caller-provided HTTP session rather than creating its own; ships type information and passes strict type checking; `requires-python >= 3.14`.
-- Object Class is open string data end-to-end, never a closed enumeration — an unrecognized class (e.g. from a Custom Model) must parse and carry through without error or disruption to built-in classes, and adding a new class requires no schema change.
-- Credentials (usernames, passwords, tokens, per-camera device credentials) must never appear in logs at any level, diagnostics output, exception messages, or stack traces. A single anonymizer, driven by one declared/extensible credential-key set, is the only path diagnostics take out of the library.
-- Destructive and remote-execution server capabilities (capture deletion, shell/shortcut execution) are excluded from the public API surface entirely — not wrapped, not private-but-present.
-- Authentication failure and permission failure must be distinguishable without parsing a message string, so a least-privileged account is never told to re-enter a correct password.
-- Reference scale for the episode reducer: ~191 per-frame classification signals for one 95-second subject crossing must reduce to exactly one episode (~190:1 ratio), reporting peak confidence across the whole span.
+- The library is a standalone, OSI-licensed, publicly-built PyPI package, fully async, accepting a caller-provided HTTP session, and never creating its own session.
+- It ships strict type information (a `py.typed` marker, `mypy --strict` clean) and must import successfully with no Home Assistant present anywhere on the system.
+- It carries an open classification vocabulary: arbitrary Object Class strings must pass through unmodified, with no enum or fixed set anywhere rejecting an unknown class.
+- Credentials must never appear in exception messages, tracebacks, log output at any level (including debug), or settings payloads. Redaction must be driven by a single, extensible declared key set, and default to redacting unrecognized fields rather than disclosing them.
+- Errors must distinguish transient failure, authentication failure, permission denial, and permanent incompatibility — including cases where the server answers `401` for what is actually a permission problem, so callers don't loop on reauth for correct credentials.
+- Capture-history queries must use server-side class filtering and cover multiple cameras in one request, never one request per camera.
+- Timestamps must reconstruct as timezone-aware datetimes using the server's own UTC offset, not an assumed UTC, with documented behavior when the offset is unavailable or the caller states its own timezone.
+- The event stream is CR-terminated only (no LF) — the single most likely implementation bug — and must never block waiting for a newline. Heartbeat loss must be declared after three missed heartbeats, with indefinite exponential-backoff reconnection distinct from auth failure (which pauses rather than loops).
+- Settings writes are partial POSTs: body must start with a literal sentinel, carry the camera number in the body, and never disturb unrelated settings. Boolean read/write encoding asymmetry (`1`/`0` on write, `true`/`false` on read) must be handled inside the library only.
+- Arming writes target the transient override only; no library method may mutate a schedule assignment, and no arming call may put `schedule=` in the query string.
+- The public API surface must exclude destructive and remote-execution endpoints entirely (capture deletion, shell/shortcut execution) — this is a permanent exclusion, not a story-level judgment call.
+- Cheap endpoints must be preferred for polling health (`camStatus` at ~794 B) over expensive ones (`systemInfo` at ~27 KB); a camera-list call already holding membership must only re-poll the cheap endpoint.
+- Permission-scoped results (camera lists, writes) must reflect exactly what the configured account may see or do — a disabled camera and a permission-withdrawn camera must be indistinguishable by construction.
 
 ## Technical Decisions
 
-- **All protocol knowledge lives in this library and nowhere else** (AD-2, AD-19): CR-framed stream parsing, endpoint URLs, `caplist` field decoding, permission/trigger bitmask decoding, the schedule model, the settings bool read/write asymmetry (JSON `true/false` read, `1/0` write), and credential handling are library-only. The integration must never parse wire formats, copy library code, or compensate for a library gap with a local workaround — a missing capability is a library change, released and pinned, before the consuming feature lands.
-- **Exception hierarchy** (AD-6): the library raises its own typed exceptions — `SecuritySpyConnectError`, `SecuritySpyAuthError`, `SecuritySpyPermissionError`, `SecuritySpyUnsupportedVersionError` — and never lets a raw `aiohttp` exception escape or imports Home Assistant.
-- **Stream client** (AD-11): owns CR framing, heartbeat watch (loss declared after 3 missed heartbeats, ~30s), indefinite exponential backoff, and emits explicit `connected` / `disconnected` / `reconnected` / `auth_failed` callbacks; `auth_failed` pauses reconnection rather than retrying in a loop; `disconnect()` is idempotent and cancels everything.
-- **Settings writes** (AD-8): a single-key partial POST per change, verified non-destructive against the ~120 other settings on the page; body-based (not query-string) camera number; no read-modify-write caching.
-- **Arming model**: writes target the transient Arm Override only (bounded duration or next scheduled event); the three capture modes are independent booleans (all eight combinations expressible); no library method mutates a schedule assignment in this epic.
-- **Object Class normalization** (AD-9): class strings pass through the library's single `class_slug()` function wherever they enter a permanent key; `HUMAN`/`VEHICLE`/`ANIMAL` are constants, not a closed type.
-- **Data models**: frozen, fully-typed dataclasses with `from_api()` constructors; raw dicts never cross the library boundary; timestamps are timezone-aware `datetime`, decoded using the server's own published UTC offset rather than an assumed UTC, with the daylight-saving limitation documented.
-- **Camera inventory decoding must be validated against a captured real-server payload**, not only an author-written fixture, and an unrecognized envelope shape must surface as a decode failure rather than a silently empty inventory.
-- **A permission denial is not reliably a `403`**: which HTTP status a denial carries is a property of the individual endpoint, not its kind — some endpoints (including scheduling) answer `401` for a missing permission, byte-identical to a wrong-password `401`. The library disambiguates by re-probing an endpoint the account is known to be allowed, never by parsing the response body, and never caches the verdict.
-- **Numeric and mode-shaped fields are decoded and modeled as the server actually sends and reads them**, not as their name might suggest: a size field that is a fractional megabyte count is not forced into an integer, and a write field that selects *which* modes a request targets is not modeled as the armed state being assigned. Getting either wrong either silently drops nearly all real data or makes a write a no-op the server reports as successful.
-- **Anonymization is redact-by-default, categorized by field meaning, not name-listed**: an unrecognized field defaults to redacted rather than disclosed, SecuritySpy's `*Pass` naming convention is recognized as a category, and identifying-but-not-secret network detail is its own disclosure class distinct from credentials. Anything deliberately left visible is recorded in a disclosure register with its justification.
-- **Camera visibility is one computation, stateless, and permission-scoped**: the library exposes a single call that intersects `++systemInfo` membership (the only permission-scoped surface) with `++camStatus` health, discarding any non-member row at the point of receipt. A disabled camera and a camera the account cannot see are the same case by construction, and capability predicates over the permission bitmask must distinguish *permission* from mere *liveness* (an offline camera loses and regains certain permission bits on reconnect).
-- **Stack**: `src/` layout, hatchling, `pyproject.toml`-only, uv, ruff, `mypy --strict`, GitHub Actions with PyPI trusted-publisher OIDC; aiohttp is caller-injected (`>=3.12,<4`); test fixtures come from recorded protocol frames (HAR / captured streams), not hand-authored ones.
+- Greenfield scaffold, no starter template: `src/` layout, `pyproject.toml` with hatchling as build backend, uv-managed environments, ruff + `mypy --strict`, GitHub Actions CI with PyPI trusted-publisher OIDC (no stored API token). `requires-python >= 3.14`.
+- All protocol knowledge (endpoint URLs, wire formats, bitmask layouts) lives exclusively in this library; nothing downstream may know a wire format or URL.
+- A typed exception hierarchy maps every failure mode (connect, auth, permission, unsupported-version) — no raw `aiohttp` exception may ever escape the library.
+- The signal-to-episode reducer is a pure component: no I/O, no timers, no network or Home Assistant imports; threshold and debounce are injected per camera and per Object Class, not module constants.
+- Frozen, typed models throughout (server info, camera, capture, health, permissions, trigger reasons) — decoding must tolerate missing/malformed fields by falling back to `None` rather than failing the whole decode, and must fail loudly (not silently return an empty inventory) when an envelope shape is unrecognized.
+- Capture size decodes as a fractional megabyte float, not a truncated integer.
+- The RTSP live-video relay is a library component: it rewrites a captured real `DESCRIBE`/`SETUP`/`PLAY` exchange so consumers (go2rtc, ffmpeg, VLC, Frigate) get a stream URL with no userinfo/`auth=` and never see SecuritySpy's real address; UDP `SETUP` and unknown identifiers are refused and logged without the credential-bearing path.
+- Later stories in this epic (1.8–1.10) exist because story 1.2 implemented "at minimum server UUID, version, camera count, camera list" literally, leaving health fields, the cheap `camStatus` poll, capture media, `schedule-list`, and the camera-enable write unassigned — these are hard blockers for Epic 2, 4, and 6 stories and must land before their consumers are dispatched.
 
 ## Cross-Story Dependencies
 
-- Stories 1.8–1.10 were added after 1.1–1.7 landed because auditing the library against Epics 2, 4, and 6 found health fields, the cheap camera-status poll, capture media endpoints, schedule names, and the camera-enable write had never been assigned to a story. These are hard blockers, not conveniences: Story 1.8 gates Epic 2's Stories 2.4/2.5, Story 1.9 gates Epic 4's Stories 4.5/4.7, and Story 1.10 gates Epic 6's Stories 6.3/6.4.
-- Story 1.5 (episode reducer) is consumed directly by Epic 5 (Live Detection); raw per-signal data must never reach a consumer's state machine.
-- Story 1.4 (capture history) and Story 1.13 (timezone-correct timestamps) together are what makes Epic 4's Observation Record correct immediately after a Home Assistant restart.
-- Story 1.7 (diagnostics anonymizer) and Story 1.11 (permission vs. auth distinction) are both consumed by the integration's exception-mapping seam (AD-6) and by Epic 2/3's reauth and error-reporting flows.
-- Stories 1.14–1.18 were added after a live-server verification pass (research §5 and beyond) found real-server behavior diverging from what 1.1–1.13 had assumed: 1.14 extends Story 1.11's permission/auth distinction to endpoints that deny with `401` instead of `403`; 1.15 corrects Story 1.4's capture-size decoding; 1.16 corrects Story 1.6's arming write semantics and is what Epic 6's arming stories (6.1, 6.4) actually build on; 1.17 widens Story 1.7's anonymizer to the categories AD-13 was expanded to cover; 1.18 gives Epic 2/3 the single permission-scoped camera list their entity-creation and health-reporting stories (2.4, 2.7) depend on.
-- No story in this epic may add Home Assistant imports or depend on anything outside the library; every downstream epic depends on this one, never the reverse.
+- Story 1.5 (episode reducer) and 1.6 (settings/arming/permission decoding) both depend on 1.2's client and models.
+- Stories 1.8, 1.9, 1.10 were retrofitted after 1.1–1.7 to cover gaps found by auditing against Epics 2, 4, and 6; they hard-block Stories 2.4, 2.5, 4.5, 4.7, 6.3, and 6.4 in those later epics.
+- Story 1.11 and 1.14 (permission vs. authentication disambiguation) protect FR-27/FR-28, consumed by Epic 2's reauthentication and permission-aware entity creation.
+- Story 1.12 (real-server camera inventory decoding) hard-blocks FR-1 and every camera-scoped requirement across all later epics.
+- Story 1.13 (server timezone) protects the correctness of FR-1 through FR-8, used throughout Epic 4 and Epic 5.
+- Story 1.16 (mode-selecting arming write) is a prerequisite for Epic 6's arming controls (FR-12, FR-13).
+- Story 1.19 (RTSP relay) is consumed by Epic 2's live-video camera entities (FR-22).
+- This epic must complete before Epic 2 (Connect and Model), since the architecture forbids the integration from knowing any wire format or endpoint URL — the library is a hard prerequisite for every other epic.

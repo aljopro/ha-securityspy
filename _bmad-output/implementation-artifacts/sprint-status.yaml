@@ -67,7 +67,7 @@ development_status:
   1-16-mode-selects-which-capture-modes-a-write-targets: done
   1-17-redact-secrets-and-identifying-detail: done
   1-18-one-call-for-the-cameras-you-may-see: done
-  1-19-relay-live-video-without-handing-out-credentials: backlog
+  1-19-relay-live-video-without-handing-out-credentials: done
   epic-1-retrospective: done
   epic-2: in-progress
   2-1-add-a-securityspy-server-through-the-ui: done
