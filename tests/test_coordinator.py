@@ -78,7 +78,8 @@ def _reconcile_method(
     ruff's `SLF001` (private-member-access) even from a test, so the callback
     the timer actually invokes is fetched by name instead.
     """
-    return getattr(coordinator, "_async_reconcile")  # noqa: B009
+    method: Callable[[], Coroutine[None, None, None]] = getattr(coordinator, "_async_reconcile")  # noqa: B009
+    return method
 
 
 async def _reconcile_now(coordinator: SecuritySpyDataUpdateCoordinator) -> None:
@@ -361,7 +362,10 @@ def _light_poll_method(
     coordinator: SecuritySpyDataUpdateCoordinator,
 ) -> Callable[[], Coroutine[None, None, None]]:
     """Return the coordinator's light-poll callback via `getattr` (see `_reconcile_method`)."""
-    return getattr(coordinator, "_async_poll_light_status")  # noqa: B009
+    method: Callable[[], Coroutine[None, None, None]] = getattr(  # noqa: B009
+        coordinator, "_async_poll_light_status"
+    )
+    return method
 
 
 async def _poll_light_status_now(coordinator: SecuritySpyDataUpdateCoordinator) -> None:

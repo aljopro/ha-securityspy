@@ -72,12 +72,11 @@ def _with_hub_health(
     applies `dataclasses.replace` on top instead of widening that builder's
     already-established signature.
     """
-    updates: dict[str, float | int] = {}
     if cpu_usage is not None:
-        updates["cpu_usage"] = cpu_usage
+        server = replace(server, cpu_usage=cpu_usage)
     if cert_expiry_days is not None:
-        updates["cert_expiry_days"] = cert_expiry_days
-    return replace(server, **updates)
+        server = replace(server, cert_expiry_days=cert_expiry_days)
+    return server
 
 
 async def test_hub_and_camera_sensors_read_fresh_heavy_values(
