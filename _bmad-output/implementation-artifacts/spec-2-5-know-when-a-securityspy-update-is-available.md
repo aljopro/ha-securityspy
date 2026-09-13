@@ -2,11 +2,11 @@
 title: 'Story 2.5 — Know when a SecuritySpy update is available'
 type: 'feature'
 created: '2026-09-12'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'e4500999b3e44f56d0eb69903c8681d14c7f3966'
+final_revision: '73d5c6324317c108a94393de2f6397c5304e02f7'
 review_loop_iteration: 0
 followup_review_recommended: false
-
 context:
   - '{project-root}/docs/ha-integration-reference.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
