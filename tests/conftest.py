@@ -57,13 +57,14 @@ def https_input(*, verify_ssl: bool = True) -> dict[str, Any]:
     return {**MOCK_HTTPS_USER_INPUT, CONF_VERIFY_SSL: verify_ssl}
 
 
-def make_server_info(
+def make_server_info(  # noqa: PLR0913 - each kwarg is a distinct optional health field, non-breaking to add
     uuid: str = SERVER_UUID,
     name: str = SERVER_NAME,
     *,
     cpu_usage: float | None = None,
     memory_pressure: float | None = None,
     cert_expiry_days: int | None = None,
+    update_version: str | None = None,
 ) -> ServerInfo:
     """Build a ``ServerInfo`` without going near the wire."""
     return ServerInfo(
@@ -75,6 +76,7 @@ def make_server_info(
         cpu_usage=cpu_usage,
         memory_pressure=memory_pressure,
         cert_expiry_days=cert_expiry_days,
+        update_version=update_version,
     )
 
 
@@ -126,6 +128,8 @@ def make_server_info_with_cameras(
     uuid: str = SERVER_UUID,
     name: str = SERVER_NAME,
     cameras: tuple[Camera, ...] = (),
+    *,
+    update_version: str | None = None,
 ) -> ServerInfo:
     """Build a ``ServerInfo`` carrying the given cameras, keyed by number.
 
@@ -134,6 +138,7 @@ def make_server_info_with_cameras(
         name: The server's display name.
         cameras: The cameras to inventory; defaults to two, matching the
             "N cameras" row of the story's I/O matrix.
+        update_version: The offered update version, if any.
 
     Returns:
         A `ServerInfo` with `cameras` populated from the given entries.
@@ -150,6 +155,7 @@ def make_server_info_with_cameras(
         version_info=(6, 20),
         camera_count=len(entries),
         cameras={camera.number: camera for camera in entries},
+        update_version=update_version,
     )
 
 

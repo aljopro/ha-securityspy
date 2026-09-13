@@ -51,9 +51,9 @@ if TYPE_CHECKING:
     from aiosecurityspy import ServerInfo
     from homeassistant.core import HomeAssistant
 
-#: Story 2.4 adds the first platform: diagnostic sensors for hub and camera
-#: health.
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+#: Story 2.4 added the first platform: diagnostic sensors for hub and camera
+#: health. Story 2.5 adds a single hub-level update entity.
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.UPDATE]
 
 
 @dataclass

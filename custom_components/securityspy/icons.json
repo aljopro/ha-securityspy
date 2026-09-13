@@ -22,6 +22,11 @@
       "last_error": {
         "default": "mdi:alert-circle-outline"
       }
+    },
+    "update": {
+      "update": {
+        "default": "mdi:package-up"
+      }
     }
   }
 }

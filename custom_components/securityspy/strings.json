@@ -82,6 +82,11 @@
       "last_error": {
         "name": "Last error"
       }
+    },
+    "update": {
+      "update": {
+        "name": "Update"
+      }
     }
   }
 }
