@@ -80,7 +80,7 @@ These are the scenarios where a passing implementation and a *correct* implement
 - **1.7-UNIT-036 / 1.7-INT-037** — no credential and no settings payload escapes into diagnostics or logs at any level.
 - **1.6-INT-034 / 6.1-SYS-117** — no code path mutates a SecuritySpy schedule.
 - **6.7-SYS-128/129/130** — the default-install trap is detected, explained, dismissible, and never silently "fixed".
-- **2.6-SYS-056** — a fresh install adds zero enabled camera entities (ONVIF untouched).
+- **2.6-SYS-056** — live video plays through the relay and no credential appears in any log or diagnostics.
 
 ### Testability attributes (equivalent of data-testid)
 

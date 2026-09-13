@@ -177,7 +177,7 @@ Per camera, gated on permissions and capability:
 | `select` | schedule | `schedule-list` | dynamic options |
 | `number` | motion / human / vehicle / animal sensitivity | `settings-cameras` | `EntityCategory.CONFIG` |
 | `sensor` | last error, fps, data rate | `systemInfo` | diagnostic |
-| `camera` | live stream | `++stream` RTSP | **disabled by default** — ONVIF coexistence |
+| `camera` | live stream | `stream?` RTSP via library relay | **enabled by default**, option to skip; superseded 2026-09-13 (FR-22) |
 
 Server/hub device: `update` (`new-version`), `sensor` cpu-usage / memory-pressure / camera-count / cert-expiry-days, `binary_sensor` archive-status.
 

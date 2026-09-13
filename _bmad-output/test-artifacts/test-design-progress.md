@@ -211,7 +211,7 @@ Categories in scope, thresholds extracted, and planned evidence. Per this workfl
 | **OPS** | Error classification | Transient vs auth vs permanent incompatibility distinguished | **KNOWN** | Exception-mapping table test (ASR-17) |
 | **COMPAT** | Min SecuritySpy version | Assumed 6.x; earliest sufficient release unverified | **UNKNOWN** → TC-11, ASR-18 | Verify, then behavior-at-constant test |
 | **COMPAT** | Min HA version | 2026.3 `[ASSUMPTION]`, Python-3.14 boundary | **KNOWN (as constant)** | CI matrix min + latest (R-008) |
-| **COMPAT** | ONVIF coexistence | Existing ONVIF setup unchanged; no enabled camera entities on fresh install | **KNOWN** | `entity_registry_enabled_default = False` assertion + fresh-install entity snapshot (SM-8) |
+| **SEC** | Stream credential containment | Live video plays via the library relay; no password or base64 credential in any log or diagnostics; option off removes camera entities | **KNOWN** | All-logger capture during relay sessions incl. failures + diagnostics snapshot + option toggle test (SM-8) |
 
 **ADR Quality Readiness Checklist mapping (8 categories / 29 criteria)** — the categories that translate to this project: **1. Testability & Automation** (TC-1…TC-4, TC-7 — the main gap cluster), **2. Test Data Strategy** (TC-8 fixture provenance/anonymization; no multi-tenancy dimension — single local server), **5. Security** (strong: AD-2/AD-13 are structural), **6. Monitorability** (log discipline + diagnostics: strong), **7. QoS/QoE** (latency and degradation covered; no rate-limiting dimension — the integration is the only load source and must throttle *itself*, per AD-10), **8. Deployability** (HACS + PyPI semver, rollback = reinstall a prior version). Categories **3. Scalability & Availability** and **4. Disaster Recovery** largely do not apply: there is no service to scale or fail over — the equivalent concern is resilience to the *server's* absence, already covered under REL. Scored coverage of the 29 criteria is deferred to `nfr-assess` after implementation evidence exists.
 
@@ -308,7 +308,7 @@ Scenario ID format: `{EPIC}.{STORY}-{LEVEL}-{SEQ}`.
 | 2.4-SYS-053 | Hub health (CPU, memory, camera count, cert expiry) and per-camera health (fps, data rate, last error) exist and are `EntityCategory.DIAGNOSTIC` | SYS | P1 | FR-23 | — |
 | 2.4-INT-054 | Health polling uses the light status endpoint; the heavy one only where a value demands it | INT | P1 | §11.1 | R-013 |
 | 2.5-SYS-055 | Update entity reports availability and offered version; no install path exists in v1 | SYS | P2 | FR-24 | — |
-| 2.6-SYS-056 | Camera entities exist but `entity_registry_enabled_default = False`; a fresh install adds **zero** enabled camera entities (**SM-8**) | SYS | P0 | FR-22 | — |
+| 2.6-SYS-056 | Camera entities enabled by default and stream via relay address; **no credential** in any log record or diagnostics; option off removes them, on restores same unique IDs (**SM-8**) | SYS | P0 | FR-22 | — |
 | 2.6-SYS-057 | Enabling a camera entity yields working live video against the fake server | SYS | P2 | FR-22 | — |
 | 2.7-SYS-058 | Permission matrix: for each combination, the created entity set matches the expected snapshot — arming controls omitted without arming permission, capture entities omitted without file access | SYS | P0 | FR-28 | TC-7 |
 | 2.7-SYS-059 | Every omitted capability raises a repair issue naming the missing permission | SYS | P0 | FR-28 | — |

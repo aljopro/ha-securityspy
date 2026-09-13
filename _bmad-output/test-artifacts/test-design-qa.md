@@ -41,7 +41,7 @@ companion: test-design-architecture.md
 | Pact / consumer-driven contract tests | No consumer/provider pair under our control; the external contract is an undocumented third-party API no broker can verify | Recorded-fixture parity + the LIVE suite (H-1) |
 | Browser automation (Playwright/Cypress) | No web UI of ours; the UI is Home Assistant's own | Config-flow coverage via `pytest-homeassistant-custom-component` |
 | Load testing (k6 or equivalent) | Load is not user-driven; the only load source is the integration itself, and AD-10 bounds it by design | Request-count assertions + the 50-camera nightly probe |
-| Video/stream quality verification | Explicit PRD non-goal — ONVIF remains the video transport | Assert only that camera entities exist and stay disabled by default |
+| Video/stream quality verification | Explicit PRD non-goal — a relay, not a video pipeline | Assert the relay plays through go2rtc and no credential appears in any log or diagnostics |
 | v2 features (media browser, clip extraction, PTZ, audio, multi-server) | Out of MVP scope per PRD §7.2 | None needed; the seed forecloses none of them |
 | Automated blueprint *execution* | Home Assistant provides no blueprint execution harness | Automate selector resolution; the import-and-fire check stays an explicit manual gate (TC-9) |
 
@@ -132,7 +132,7 @@ Full descriptions, scores, and mitigation plans are in the architecture document
 | MAINT — coverage | Bronze full config-flow; Silver > 95 % | `pytest-cov` `fail_under` in CI | CI | Coverage report | P0 |
 | MAINT — typing / layer purity | `mypy --strict`; no cross-layer imports | CI gate + import guards | INT | mypy + guard results | P1 |
 | COMPAT — versions | Min SecuritySpy **UNKNOWN**; min HA 2026.3 | CI matrix; behavior-at-constant test | INT | Matrix results | P0/P1 |
-| COMPAT — ONVIF coexistence | Zero enabled camera entities on fresh install | Entity snapshot (SM-8) | SYS | Snapshot | P0 |
+| SEC — stream credential containment | No password or base64 credential in any log record or diagnostics during live video | All-logger capture + diagnostics snapshot (SM-8) | SYS | Capture | P0 |
 | CORRECTNESS — freshness | **UNKNOWN — blocking** (Open Q3) | Live spike | LIVE | Spike report | P0 |
 
 **Missing thresholds / evidence sources:** lookback window, fallback interval, FILE debounce, detection threshold and debounce defaults, minimum SecuritySpy version, upper bound on camera count, numeric detection-latency bound, backoff schedule. Each is tracked as an assumption or risk in the architecture document; none are guessed here.
@@ -214,7 +214,7 @@ Full descriptions, scores, and mitigation plans are in the architecture document
 | 2.3-SYS-048 | Camera rename → device renamed, zero unique-ID churn | SYS | R-006 | |
 | 2.3-SYS-049 | Host/IP/port change → no duplicates, no orphans | SYS | R-006 | |
 | 2.3-SYS-050 | Eleven cameras correctly named; no IP names, no "Generic" | SYS | — | **SM-4** |
-| 2.6-SYS-056 | Zero enabled camera entities on a fresh install | SYS | — | **SM-8**, ONVIF untouched |
+| 2.6-SYS-056 | Live video plays via relay; no credential in any log or diagnostics; option off removes entities | SYS | — | **SM-8**, credentials contained |
 | 2.7-SYS-058 | Permission matrix → expected entity set per combination | SYS | TC-7 | |
 | 2.7-SYS-060 | No entity created that is permanently unavailable by permission | SYS | TC-7 | |
 | 2.8-INT-061 | 2 failures → no reauth; 3rd → `ConfigEntryAuthFailed`, both planes stop | INT | R-014 | |
@@ -434,7 +434,7 @@ At concentrated effort that is roughly **4–7 weeks**; at hobby cadence, consid
 | Entity platforms | Platform changes re-run the entity-set snapshots (identity, permissions, ONVIF coexistence) and the blueprint selector test |
 | Home Assistant (external) | Weekly scheduled run; a breaking HA release triggers a full-suite regression pass |
 | SecuritySpy server (external) | A server upgrade on the reference system triggers the LIVE parity diff before any release |
-| ONVIF integration (coexistence) | Never modified by us; regression is limited to asserting zero enabled camera entities on fresh install (SM-8) |
+| ONVIF / Generic Camera (coexistence) | Never modified by us; regression is limited to asserting our option removes our camera entities and touches no other integration's |
 
 ---
 

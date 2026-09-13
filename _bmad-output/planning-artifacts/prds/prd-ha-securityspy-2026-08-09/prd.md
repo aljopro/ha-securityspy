@@ -42,13 +42,12 @@ Three things converged in the last eighteen months, and together they define the
 - **Know what has been seen, after the fact.** Not "were you notified at the time" — *has anyone been in the driveway today*, asked whenever the question occurs, answered from Home Assistant alone.
 - **Be told what is happening, not that something happened.** "There's a package at the door" rather than "motion detected." The reference user has a Nest doorbell that clears this bar and a surveillance system that does not.
 - **Automate against cameras like any other Home Assistant device** — in the UI automation editor, without attribute-name lore or reading source code.
-- **Keep the working video setup untouched.** ONVIF handles video well; adding knowledge must not cost the user their existing transport.
+- **Keep the working video setup working.** Adding the integration must not break an existing transport; switching to its live video is the user's choice.
 - **Stop tending the integration.** The predecessor's failure mode was maintainer fatigue. Success includes not having to think about it.
 - **For the builder specifically:** produce something durable enough that inheriting it is attractive, and that a core submission remains possible without being committed to.
 
 ### 3.2 Non-Users (v1)
 
-- Users wanting SecuritySpy as their **primary video transport** into Home Assistant. Camera entities ship disabled by default; ONVIF coexistence is the expected topology.
 - Users on **multiple SecuritySpy servers**. Out for v1; the identity scheme leaves room.
 - Users wanting **SecuritySpy configuration management** from Home Assistant beyond arming and detection tuning.
 - Users expecting **package detection, face recognition, or scene description**. SecuritySpy does not do these; the integration exposes the image and the user points whatever they like at it.
@@ -447,14 +446,18 @@ Entity and device identity survives renames, address changes, and reconfiguratio
 - Renaming a camera in SecuritySpy does not change any unique identifier.
 - Every entity has a unique identifier stable across restarts.
 
-#### FR-22: Camera entities disabled by default
+#### FR-22: Live video without exposing credentials
 
-Live video entities exist but do not appear unless the user enables them.
+Each camera streams live video in Home Assistant with no setup, and no credential leaves the API Library.
 
 **Consequences (testable):**
-- Each Camera Device exposes a live video entity, disabled by default.
-- A fresh install adds no enabled camera entities and does not disturb an existing ONVIF setup.
-- Enabling one produces working live video.
+- Each Camera Device the account may view live exposes a live video entity, enabled by default, that produces working live video.
+- The stream Home Assistant receives is a local relay address; SecuritySpy credentials never appear in the stream source, in logs at any level, or in diagnostics.
+- An option, on by default, controls whether live video entities are created; turning it off removes them, and turning it back on restores them with their original identifiers.
+- An existing video setup (ONVIF, Generic Camera) keeps working after installation; a user removes duplicates with one option or by disabling their old entities.
+- Live video entities open no stream to SecuritySpy until something requests one.
+
+**Notes:** Supersedes the original "disabled by default" rule (2026-09-13). That rule protected ONVIF coexistence when credential-bearing stream URLs were the only path; the relay removes the hazard, and a first-time user most likely has no video setup to protect.
 
 #### FR-23: Diagnostic sensors
 
@@ -707,7 +710,7 @@ Neither the library nor the integration exposes credentials in diagnostics or lo
 
 ## 6. Non-Goals (Explicit)
 
-- **Not a video transport.** ONVIF works; this integration is not a replacement for it. Camera entities exist, disabled by default.
+- **Not a video pipeline.** Live video is a credential-safe relay to SecuritySpy's own stream; no transcoding, recording, audio promise, or stream-quality tuning.
 - **Not an image interpreter.** No scene description, package detection, or face recognition. SecuritySpy classifies into three buckets; richer meaning comes from whatever the user points at the Latest Capture image.
 - **Not the downstream pipeline.** The webhook, the vision agent, and the notification are the user's to compose in ordinary automations.
 - **Not a SecuritySpy configuration manager.** Arming and detection tuning only. Not storage, schedules, users, network, or recording configuration.
@@ -758,12 +761,12 @@ Neither the library nor the integration exposes credentials in diagnostics or lo
 - **SM-5: Someone else installs it successfully without help.** At least one user other than the builder completes installation and setup without asking a question. Validates FR-25, FR-36.
 - **SM-6: Quality scale verified in CI.** Bronze rules pass in continuous integration before release; Silver before public announcement. Validates FR-38, FR-39.
 - **SM-7: Survives the four disruptions unattended.** A SecuritySpy restart, a Mac reboot, a network drop, and a Home Assistant upgrade each occur without requiring a Home Assistant restart or manual recovery. Validates FR-30, FR-31.
-- **SM-8: ONVIF untouched.** The existing ONVIF video setup continues working unchanged after installation. Validates FR-22.
+- **SM-8: Live video, credentials contained.** Every camera on the reference system plays live in Home Assistant through the relay; a search of the logs and diagnostics finds no credential; the existing video setup kept working until the builder chose to remove it. Validates FR-22.
 - **SM-9: The library is independently usable.** The API Library is installable from PyPI and usable in a script with no Home Assistant present. Validates FR-40, FR-41.
 
 **Counter-metrics (do not optimize)**
 
-- **SM-C1: Entity count per camera.** More entities is not better. Every entity must answer a question a user actually asks; diagnostics stay categorized and video stays disabled by default. Counterbalances SM-4 and the breadth of §5.6.
+- **SM-C1: Entity count per camera.** More entities is not better. Every entity must answer a question a user actually asks; diagnostics stay categorized and one option removes live video entirely. Counterbalances SM-4 and the breadth of §5.6.
 - **SM-C2: Detection sensitivity.** Do not tune the Detection Threshold down to maximize detections. A presence sensor that fires on noise is worse than one that misses a marginal detection, because the Observation Record corrects misses on the next reconciliation and cannot correct false positives a user has already been notified about. Counterbalances SM-2.
 - **SM-C3: Feature count at v1.** Do not expand scope to differentiate. The predecessor died of maintainer fatigue; shipping a smaller surface that reaches Bronze beats a larger one that never releases. Counterbalances SM-6 and §7.2's deferrals.
 - **SM-C4: Adoption.** Do not optimize for install count. The engaged population is small — on the order of one to two hundred — and chasing growth would trade durability for reach in a community that has already been burned by an integration disappearing. Counterbalances SM-5.
@@ -807,7 +810,7 @@ The test for any proposed surface is not *can the endpoint do it* but **is this 
 
 ### 10.3 Coexistence
 
-- Running alongside ONVIF is the **expected topology, not a failure mode**. Home Assistant cannot merge devices across integrations, so a user running both sees two devices per physical camera. Camera entities disabled by default (FR-22) make the duplication mostly invisible.
+- Running alongside ONVIF or Generic Camera is **supported, not a failure mode**. Home Assistant cannot merge devices across integrations, so a user running both sees two devices per physical camera. The live-video option (FR-22) removes this integration's video entities in one step; the README explains the choice.
 - The integration must not assume it is SecuritySpy's only client. HomeHelper, the vendor's iOS app, and the web client may all be connected concurrently.
 
 ## 11. Cross-Cutting NFRs
@@ -876,7 +879,7 @@ Sequencing, not dates. The ordering constraints are real; the grouping is a star
 8. **Minimum supported SecuritySpy version.** Assumed 6.x (§11.5); the earliest release carrying the required endpoints is unverified.
 9. **Should the builder contact the active fork's maintainer?** Not a product requirement, but competing head-on with the only active maintainer in a community of roughly a hundred people is worth a deliberate decision rather than a default.
 10. **Media browser and clip extraction — v2, or pulled forward?** Both deferred (§7.2), both wanted, both flagged as emotionally load-bearing.
-11. **Resource-scoped auth tokens.** SecuritySpy supports tokens that grant access to a single resource without revealing credentials — the designed answer to credentials leaking through stream URLs into logs. But token generation appears to be GUI-only and the format is unverified. v1 uses username/password with FR-42's redaction discipline; token support is worth investigating for the camera-entity path, where credential-bearing URLs are handed to external processes.
+11. **Resource-scoped auth tokens.** *Resolved 2026-09-13 — superseded by the local relay.* Tokens are verified real and scoped to one endpoint on one camera (research 6.21 §5.16.1), but no HTTP endpoint issues them, so they would cost a manual paste per camera. FR-22 instead routes live video through a relay inside the API Library that attaches credentials only on the upstream connection. Revisit only if SecuritySpy ships an HTTP token-issuing endpoint.
 
 ## 14. Assumptions Index
 

@@ -283,7 +283,9 @@ OBSERVATION_SENSORS: tuple[SecuritySpySensorEntityDescription, ...] = tuple(
 ```python
 _attr_entity_category = EntityCategory.CONFIG  # arming, triggers, sensitivity, enable
 _attr_entity_category = EntityCategory.DIAGNOSTIC  # cpu, fps, data rate, cert expiry
-_attr_entity_registry_enabled_default = False  # camera/live video (FR-22 → protects ONVIF)
+# camera/live video: enabled by default; created only while the
+# create_camera_entities option is on (FR-22). stream_source() returns the
+# library relay address, never a credential-bearing URL (AD-13).
 ```
 
 ---

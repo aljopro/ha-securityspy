@@ -62,7 +62,7 @@ Numbering is taken verbatim from the PRD (FR-1…FR-45) so downstream references
 - FR-19: Cameras appear as devices beneath a single server device.
 - FR-20: Devices and entities are correctly named on creation, with no manual intervention.
 - FR-21: Entity and device identity survives renames, address changes, and reconfiguration.
-- FR-22: Live video entities exist but do not appear unless the user enables them.
+- FR-22: Each camera streams live video with no setup, and no credential leaves the API Library.
 - FR-23: A Home Assistant user can see server and camera health (diagnostic entities).
 - FR-24: A Home Assistant user is informed when a SecuritySpy update is available.
 
@@ -206,7 +206,7 @@ Every FR maps to exactly one owning epic. Where another epic also realizes part 
 | FR-19 | Epic 2 | Hub and Camera Device hierarchy |
 | FR-20 | Epic 2 | Correct naming with no manual intervention |
 | FR-21 | Epic 2 | Stable identity from server UUID and camera number |
-| FR-22 | Epic 2 | Camera entities present but disabled by default |
+| FR-22 | Epic 1, Epic 2 | Library RTSP relay (1.19); live video entities, enabled by default, with an option to skip them (2.6) |
 | FR-23 | Epic 2 | Server and per-camera diagnostic sensors |
 | FR-24 | Epic 2 | Server update-available signal |
 | FR-25 | Epic 2 | UI configuration flow |
@@ -251,7 +251,7 @@ A user adds their SecuritySpy server through the Home Assistant UI — over HTTP
 
 **FRs covered:** FR-19, FR-20, FR-21, FR-22, FR-23, FR-24, FR-25, FR-26, FR-27, FR-28, FR-29
 
-**Implementation notes:** Establishes the integration repository scaffold, the single coordinator, the typed data container, the permanent identity scheme, and the exception-mapping seam. Camera (live video) entities ship disabled by default so an existing ONVIF setup is undisturbed. Gold `dynamic-devices` and `stale-devices` patterns are honored here because they are cheap now and expensive to retrofit. Validated by SM-4 (eleven cameras, zero manual renaming) and SM-8 (ONVIF untouched).
+**Implementation notes:** Establishes the integration repository scaffold, the single coordinator, the typed data container, the permanent identity scheme, and the exception-mapping seam. Camera (live video) entities ship enabled, stream through the library's RTSP relay so no credential reaches Home Assistant, and can be skipped with one option. Gold `dynamic-devices` and `stale-devices` patterns are honored here because they are cheap now and expensive to retrofit. Validated by SM-4 (eleven cameras, zero manual renaming) and SM-8 (live video, credentials contained).
 
 ### Epic 3: Resilience
 
@@ -756,7 +756,43 @@ So that a consumer never has to derive the `++systemInfo`/`++camStatus` intersec
 **When** the list is requested
 **Then** both are absent and the result is identical -- the two are indistinguishable by construction, not by accident
 
----
+### Story 1.19: Relay live video without handing out credentials
+
+As a Python developer,
+I want a local RTSP relay that plays a camera's live stream while the account credentials stay inside the library,
+So that an RTSP consumer (go2rtc, ffmpeg, VLC, Frigate) can show live video without a password ever reaching its URL, logs, or configuration. *(FR-22, FR-41, FR-42)*
+
+**Acceptance Criteria:**
+
+**Given** the RTSP handshake of the reference server
+**When** the relay's rewriting rules are written
+**Then** they are derived from a captured real `DESCRIBE`/`SETUP`/`PLAY` exchange (request lines, `Content-Base`, SDP control attributes), not from the published spec alone
+
+**Given** a server
+**When** `unsecured_stream_url(camera_number)` is called
+**Then** it returns `rtsp://{host}:{port-rtsp}/stream?cameraNum=N&vcodec=h26x&acodec=src`, with the RTSP port decoded from `++systemInfo`, and no userinfo or `auth=` parameter
+
+**Given** a relay started with default settings
+**When** a consumer on the same host opens the relay address for a camera over RTSP/TCP
+**Then** it receives that camera's live stream
+**And** every URL the consumer sees, in responses and SDP, points at the relay, never at SecuritySpy's address or any `auth=` value
+
+**Given** a running relay
+**When** a camera's relay address is requested repeatedly
+**Then** the same address is returned for the life of that relay, and a newly started relay issues different identifiers
+
+**Given** a connection with an unknown identifier, or a `SETUP` requesting UDP transport
+**When** the relay receives it
+**Then** it is refused and logged without the requested path
+
+**Given** a relay started with an explicit bind address
+**When** a consumer on another host connects with a valid identifier
+**Then** it receives the stream, and credentials still never leave the relay
+
+**Given** any relay session, including upstream refusal, authentication failure, and connection loss
+**When** every log record at every level is inspected
+**Then** neither the password nor its base64 form appears in any of them
+
 
 ## Epic 2: Connect and Model
 
@@ -887,22 +923,33 @@ So that I find out from Home Assistant rather than by chance. *(FR-24)*
 **When** a user attempts to install from Home Assistant
 **Then** no install action is offered, because installing updates is out of scope for v1
 
-### Story 2.6: Live video exists but stays out of the way
+### Story 2.6: Live video without exposing credentials
 
-As a Home Assistant user already streaming these cameras over ONVIF,
-I want SecuritySpy's camera entities to exist but not appear unless I ask for them,
-So that installing this integration does not disturb my working video setup. *(FR-22)*
+As a Home Assistant user,
+I want each SecuritySpy camera to stream live on its device with no setup,
+So that I can watch my cameras in Home Assistant without my SecuritySpy password ending up in a URL or a log. *(FR-22; depends on Story 1.19)*
 
 **Acceptance Criteria:**
 
-**Given** a fresh installation on a system with an existing ONVIF setup
+**Given** a fresh installation
 **When** setup completes
-**Then** each camera device has a live video entity that is disabled by default
-**And** no enabled camera entity is added, and the existing ONVIF entities are untouched and still working
+**Then** each camera the account may view live has a live video entity, enabled by default, on its camera device
+**And** no stream is opened to SecuritySpy until something requests one
+**And** existing ONVIF or Generic Camera entities are untouched
 
-**Given** a disabled camera entity
-**When** the user enables it and reloads
-**Then** it produces working live video
+**Given** a live video entity
+**When** a user opens it in Home Assistant
+**Then** it plays live video, and its stream source is a relay address from the library
+**And** its still image comes from SecuritySpy's snapshot endpoint with header authentication, not from the stream
+
+**Given** any live video session, including an unreachable server and rejected credentials
+**When** every log record at every level and the diagnostics download are inspected
+**Then** neither the password nor its base64 form appears
+
+**Given** the "Create live video entities" option
+**When** a user turns it off
+**Then** the live video entities are removed and the relay stops issuing their addresses
+**And** when the user turns it back on, the entities return with their original unique IDs
 
 ### Story 2.7: Only create entities the user is permitted to use
 
