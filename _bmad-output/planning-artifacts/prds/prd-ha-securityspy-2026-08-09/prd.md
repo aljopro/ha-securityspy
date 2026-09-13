@@ -879,7 +879,7 @@ Sequencing, not dates. The ordering constraints are real; the grouping is a star
 8. **Minimum supported SecuritySpy version.** Assumed 6.x (§11.5); the earliest release carrying the required endpoints is unverified.
 9. **Should the builder contact the active fork's maintainer?** Not a product requirement, but competing head-on with the only active maintainer in a community of roughly a hundred people is worth a deliberate decision rather than a default.
 10. **Media browser and clip extraction — v2, or pulled forward?** Both deferred (§7.2), both wanted, both flagged as emotionally load-bearing.
-11. **Resource-scoped auth tokens.** *Resolved 2026-09-13 — superseded by the local relay.* Tokens are verified real and scoped to one endpoint on one camera (research 6.21 §5.16.1), but no HTTP endpoint issues them, so they would cost a manual paste per camera. FR-22 instead routes live video through a relay inside the API Library that attaches credentials only on the upstream connection. Revisit only if SecuritySpy ships an HTTP token-issuing endpoint.
+11. **Resource-scoped auth tokens.** *Resolved 2026-09-13 — superseded by the local relay.* Tokens are verified real and scoped to one endpoint on one camera (research 6.21 §5.16.1), but no HTTP endpoint issues them, so they would cost a manual paste per camera. FR-22 instead routes live video through a relay inside the API Library that attaches credentials only on the upstream connection. Revisit only if SecuritySpy ships an HTTP token-issuing endpoint — requested from the vendor as an "Integration tokens" screen: [forum thread 4922](https://bensoftware.com/forum/discussion/4922/suggestion-an-integration-tokens-screen-for-third-party-clients/p1).
 
 ## 14. Assumptions Index
 

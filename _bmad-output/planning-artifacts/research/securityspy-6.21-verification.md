@@ -868,6 +868,8 @@ Treating them as **server-minted and human-copied** is the safe reading.
 **No all-cameras token exists** (Jensen checked the URL Generator, 2026-09-13): every token is
 issued for one camera, so token auth would cost one manual paste per camera and endpoint. This
 is part of why FR-22 routes live video through the library relay instead (AD-13 item 3).
+Requested from Ben Software as an "Integration tokens" screen, 2026-09-13:
+[forum thread 4922](https://bensoftware.com/forum/discussion/4922/suggestion-an-integration-tokens-screen-for-third-party-clients/p1).
 
 ### There are TWO `auth=` forms, and only one is safe ⚠
 
