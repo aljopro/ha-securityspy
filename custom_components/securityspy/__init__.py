@@ -6,8 +6,8 @@ future coordinator or platform never re-decides what a connect error means.
 
 The coordinator (``coordinator.py``) and the device-identity builders
 (``entity.py``) exist as of story 2.3, and setup starts the coordinator here
-before forwarding platform setups. No entity *class* and no platform module
-exist yet -- :data:`PLATFORMS` stays empty until story 2.4.
+before forwarding platform setups. Story 2.4 adds the first entity classes
+and platform module (``sensor.py``), so :data:`PLATFORMS` is no longer empty.
 """
 
 from __future__ import annotations
@@ -51,9 +51,9 @@ if TYPE_CHECKING:
     from aiosecurityspy import ServerInfo
     from homeassistant.core import HomeAssistant
 
-#: Empty until story 2.4 adds the first platform. Forwarding an empty list is
-#: a no-op, so the setup/unload shape is already the final one.
-PLATFORMS: list[Platform] = []
+#: Story 2.4 adds the first platform: diagnostic sensors for hub and camera
+#: health.
+PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
 @dataclass

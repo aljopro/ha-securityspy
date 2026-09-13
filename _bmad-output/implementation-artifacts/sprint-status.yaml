@@ -72,7 +72,7 @@ development_status:
   2-1-add-a-securityspy-server-through-the-ui: done
   2-2-connect-over-https-with-a-verification-toggle: done
   2-3-cameras-appear-as-devices-under-one-server-hub: done
-  2-4-see-server-and-camera-health: backlog
+  2-4-see-server-and-camera-health: done
   2-5-know-when-a-securityspy-update-is-available: backlog
   2-6-live-video-exists-but-stays-out-of-the-way: backlog
   2-7-only-create-entities-the-user-is-permitted-to-use: backlog

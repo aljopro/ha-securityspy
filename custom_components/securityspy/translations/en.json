@@ -58,5 +58,30 @@
     "unknown": {
       "message": "SecuritySpy answered with an error this integration does not recognise. Check SecuritySpy's own log under Window > Log."
     }
+  },
+  "entity": {
+    "sensor": {
+      "cpu_usage": {
+        "name": "CPU usage"
+      },
+      "memory_pressure": {
+        "name": "Memory pressure"
+      },
+      "camera_count": {
+        "name": "Camera count"
+      },
+      "cert_expiry_days": {
+        "name": "Certificate expiry"
+      },
+      "current_fps": {
+        "name": "Current frame rate"
+      },
+      "data_rate": {
+        "name": "Data rate"
+      },
+      "last_error": {
+        "name": "Last error"
+      }
+    }
   }
 }

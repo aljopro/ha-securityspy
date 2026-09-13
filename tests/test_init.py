@@ -312,10 +312,10 @@ async def test_setup_constructs_and_starts_the_coordinator(
 ) -> None:
     """Setup builds the coordinator, starts it, and stores it on runtime_data.
 
-    `coordinator.data is entry.runtime_data.server` proves the constructor
-    seeded from the one server `__init__.py` already fetched, with no
-    divergent second fetch: had `async_start` re-fetched, `coordinator.data`
-    could in principle be a *different* `ServerInfo` object than the one
+    `coordinator.data.server is entry.runtime_data.server` proves the
+    constructor seeded from the one server `__init__.py` already fetched, with
+    no divergent second fetch: had `async_start` re-fetched, `coordinator.data`
+    could in principle wrap a *different* `ServerInfo` object than the one
     stored as `.server`, even if the two compared equal.
     """
     entry = _add_entry(hass)
@@ -329,7 +329,7 @@ async def test_setup_constructs_and_starts_the_coordinator(
 
     assert isinstance(entry.runtime_data.coordinator, SecuritySpyDataUpdateCoordinator)
     async_start.assert_awaited_once()
-    assert entry.runtime_data.coordinator.data is entry.runtime_data.server
+    assert entry.runtime_data.coordinator.data.server is entry.runtime_data.server
     # Only the one `test-before-setup` call: the coordinator's own startup
     # path must not add a second.
     assert mock_client.async_get_server_info.await_count == 1

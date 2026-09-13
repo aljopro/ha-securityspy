@@ -28,3 +28,12 @@ DEFAULT_PORT: Final[int] = _LIBRARY_DEFAULT_PORT
 #: device inventory. A stand-in: Epic 3's `reconnected` callback and AD-10's
 #: real reconciliation cycle will likely subsume or replace this timer.
 RECONCILE_INTERVAL: Final[timedelta] = timedelta(minutes=10)
+
+#: How often the coordinator re-fetches `async_get_camera_status()`, the cheap
+#: ``++camStatus`` endpoint, to keep per-camera `last_error` current on a much
+#: faster cadence than the heavy `RECONCILE_INTERVAL` poll can offer. No
+#: existing constant to reuse (unlike `RECONCILE_INTERVAL`'s reuse of AD-10);
+#: chosen as a reasonable "notice a stuck camera quickly" cadence for a
+#: ~800B request. A tunable, not an architectural commitment -- a later story
+#: may move this to options.
+LIGHT_POLL_INTERVAL: Final[timedelta] = timedelta(seconds=30)

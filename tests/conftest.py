@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Final
 from unittest.mock import MagicMock, patch
 
 import pytest
-from aiosecurityspy import Camera, ServerInfo
+from aiosecurityspy import Camera, CameraStatus, ServerInfo
 from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -57,7 +57,14 @@ def https_input(*, verify_ssl: bool = True) -> dict[str, Any]:
     return {**MOCK_HTTPS_USER_INPUT, CONF_VERIFY_SSL: verify_ssl}
 
 
-def make_server_info(uuid: str = SERVER_UUID, name: str = SERVER_NAME) -> ServerInfo:
+def make_server_info(
+    uuid: str = SERVER_UUID,
+    name: str = SERVER_NAME,
+    *,
+    cpu_usage: float | None = None,
+    memory_pressure: float | None = None,
+    cert_expiry_days: int | None = None,
+) -> ServerInfo:
     """Build a ``ServerInfo`` without going near the wire."""
     return ServerInfo(
         uuid=uuid,
@@ -65,10 +72,22 @@ def make_server_info(uuid: str = SERVER_UUID, name: str = SERVER_NAME) -> Server
         version="6.20",
         version_info=(6, 20),
         camera_count=0,
+        cpu_usage=cpu_usage,
+        memory_pressure=memory_pressure,
+        cert_expiry_days=cert_expiry_days,
     )
 
 
-def make_camera(number: int, name: str, *, enabled: bool = True) -> Camera:
+def make_camera(  # noqa: PLR0913 - each kwarg is a distinct optional health field, non-breaking to add
+    number: int,
+    name: str,
+    *,
+    enabled: bool = True,
+    current_fps: float | None = None,
+    data_rate: float | None = None,
+    last_error: str | None = None,
+    last_error_description: str | None = None,
+) -> Camera:
     """Build a ``Camera`` without going near the wire."""
     return Camera(
         number=number,
@@ -76,6 +95,30 @@ def make_camera(number: int, name: str, *, enabled: bool = True) -> Camera:
         connected=True,
         enabled=enabled,
         permissions=0,
+        current_fps=current_fps,
+        data_rate=data_rate,
+        last_error=last_error,
+        last_error_description=last_error_description,
+    )
+
+
+def make_camera_status(  # noqa: PLR0913 - each kwarg mirrors a distinct `CameraStatus` field
+    number: int,
+    *,
+    enabled: bool = True,
+    online: bool = True,
+    open: bool = True,  # noqa: A002 - matches the library's own `CameraStatus.open` field name
+    error: str | None = None,
+    error_description: str | None = None,
+) -> CameraStatus:
+    """Build a ``CameraStatus`` without going near the wire."""
+    return CameraStatus(
+        number=number,
+        enabled=enabled,
+        online=online,
+        open=open,
+        error=error,
+        error_description=error_description,
     )
 
 
@@ -136,6 +179,10 @@ def mock_client_class() -> Generator[MagicMock]:
         patch("custom_components.securityspy.SecuritySpyClient", new=client_class),
     ):
         client_class.return_value.async_get_server_info.return_value = make_server_info()
+        # Empty by default: most tests do not care about the light poll, and
+        # an empty tuple is the non-breaking default `SecuritySpyData` itself
+        # starts with.
+        client_class.return_value.async_get_camera_status.return_value = ()
         yield client_class
 
 

@@ -22,10 +22,16 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntryType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.securityspy.const import DOMAIN, RECONCILE_INTERVAL
+from custom_components.securityspy.const import DOMAIN, LIGHT_POLL_INTERVAL, RECONCILE_INTERVAL
 from custom_components.securityspy.coordinator import SecuritySpyDataUpdateCoordinator
 
-from .conftest import SERVER_UUID, make_camera, make_server_info, make_server_info_with_cameras
+from .conftest import (
+    SERVER_UUID,
+    make_camera,
+    make_camera_status,
+    make_server_info,
+    make_server_info_with_cameras,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -154,7 +160,7 @@ async def test_reconcile_renames_a_camera_device(
     assert after.id == before.id
     assert after.identifiers == before.identifiers
     assert after.name == "Back Yard"
-    assert coordinator.data is renamed
+    assert coordinator.data.server is renamed
 
 
 async def test_reconcile_adds_a_new_camera_device(
@@ -320,7 +326,7 @@ async def test_reconcile_failure_leaves_the_registry_untouched(
         device.id for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id)
     }
     assert after == before
-    assert coordinator.data is server
+    assert coordinator.data.server is server
     assert any(
         record.levelname == "DEBUG" and "reconcil" in record.getMessage().lower()
         for record in caplog.records
@@ -344,21 +350,33 @@ async def test_reconcile_survives_an_unexpected_registry_sync_failure(
     ):
         await _reconcile_now(coordinator)  # must not raise
 
-    assert coordinator.data is server  # unchanged: the failed sync must not be published
+    assert coordinator.data.server is server  # unchanged: the failed sync must not be published
     assert any(
         record.levelname == "ERROR" and "unexpected" in record.getMessage().lower()
         for record in caplog.records
     )
 
 
-async def test_unload_cancels_the_reconciliation_timer(hass: HomeAssistant) -> None:
-    """The timer's unsub, registered via `entry.async_on_unload`, is called on unload."""
+def _light_poll_method(
+    coordinator: SecuritySpyDataUpdateCoordinator,
+) -> Callable[[], Coroutine[None, None, None]]:
+    """Return the coordinator's light-poll callback via `getattr` (see `_reconcile_method`)."""
+    return getattr(coordinator, "_async_poll_light_status")  # noqa: B009
+
+
+async def _poll_light_status_now(coordinator: SecuritySpyDataUpdateCoordinator) -> None:
+    """Invoke one light-poll pass, as the periodic timer would."""
+    await _light_poll_method(coordinator)()
+
+
+async def test_unload_cancels_both_reconciliation_timers(hass: HomeAssistant) -> None:
+    """Both timers' unsubs, registered via `entry.async_on_unload`, are called on unload."""
     entry = _add_entry(hass)
     server = make_server_info()
-    unsub = MagicMock()
+    unsubs = [MagicMock(), MagicMock()]
     with patch(
         "custom_components.securityspy.coordinator.async_track_time_interval",
-        return_value=unsub,
+        side_effect=unsubs,
     ):
         coordinator = _make_coordinator(hass, entry, server)
         await coordinator.async_start()
@@ -367,13 +385,14 @@ async def test_unload_cancels_the_reconciliation_timer(hass: HomeAssistant) -> N
     await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
 
-    unsub.assert_called_once()
+    for unsub in unsubs:
+        unsub.assert_called_once()
 
 
 async def test_reconciliation_is_scheduled_with_the_right_callback_and_interval(
     hass: HomeAssistant,
 ) -> None:
-    """The periodic timer is actually `_async_reconcile` on `RECONCILE_INTERVAL`."""
+    """The heavy timer is `_async_reconcile` on `RECONCILE_INTERVAL`."""
     entry = _add_entry(hass)
     server = make_server_info()
     coordinator = _make_coordinator(hass, entry, server)
@@ -383,7 +402,156 @@ async def test_reconciliation_is_scheduled_with_the_right_callback_and_interval(
     ) as track_time_interval:
         await coordinator.async_start()
 
-    args, _kwargs = track_time_interval.call_args
+    args, _kwargs = track_time_interval.call_args_list[0]
     assert args[0] is hass
     assert args[1] == _reconcile_method(coordinator)
     assert args[2] == RECONCILE_INTERVAL
+
+
+async def test_light_poll_is_scheduled_with_the_right_callback_and_interval(
+    hass: HomeAssistant,
+) -> None:
+    """The light timer is `_async_poll_light_status` on `LIGHT_POLL_INTERVAL`."""
+    entry = _add_entry(hass)
+    server = make_server_info()
+    coordinator = _make_coordinator(hass, entry, server)
+
+    with patch(
+        "custom_components.securityspy.coordinator.async_track_time_interval"
+    ) as track_time_interval:
+        await coordinator.async_start()
+
+    args, _kwargs = track_time_interval.call_args_list[1]
+    assert args[0] is hass
+    assert args[1] == _light_poll_method(coordinator)
+    assert args[2] == LIGHT_POLL_INTERVAL
+
+
+async def test_light_poll_merges_fresh_camera_statuses(hass: HomeAssistant) -> None:
+    """A successful light poll replaces `camera_statuses`, keeping `server` as-is."""
+    entry = _add_entry(hass)
+    server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, server, client)
+    await _start_without_a_real_timer(coordinator)
+
+    status = make_camera_status(1, error="e/network", error_description="Network error")
+    client.async_get_camera_status = AsyncMock(return_value=(status,))
+    await _poll_light_status_now(coordinator)
+
+    assert coordinator.data.server is server
+    assert coordinator.data.camera_statuses == {1: status}
+
+
+async def test_light_poll_transient_failure_leaves_data_untouched(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A transient light-poll failure changes nothing and does not raise."""
+    entry = _add_entry(hass)
+    server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, server, client)
+    await _start_without_a_real_timer(coordinator)
+    before = coordinator.data
+
+    client.async_get_camera_status = AsyncMock(
+        side_effect=SecuritySpyConnectError("192.168.1.20", 8000, "timeout")
+    )
+    with caplog.at_level("DEBUG"):
+        await _poll_light_status_now(coordinator)
+
+    assert coordinator.data is before
+    assert any(
+        record.levelname == "DEBUG" and "light" in record.getMessage().lower()
+        for record in caplog.records
+    )
+
+
+async def test_heavy_reconcile_preserves_camera_statuses_from_the_last_light_poll(
+    hass: HomeAssistant,
+) -> None:
+    """A heavy refresh keeps the last-known `camera_statuses`, not reset to empty."""
+    entry = _add_entry(hass)
+    initial = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, initial, client)
+    await _start_without_a_real_timer(coordinator)
+
+    status = make_camera_status(1, error="e/network")
+    client.async_get_camera_status = AsyncMock(return_value=(status,))
+    await _poll_light_status_now(coordinator)
+    assert coordinator.data.camera_statuses == {1: status}
+
+    refreshed = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client.async_get_server_info = AsyncMock(return_value=refreshed)
+    await _reconcile_now(coordinator)
+
+    assert coordinator.data.server is refreshed
+    assert coordinator.data.camera_statuses == {1: status}
+
+
+async def test_light_poll_drops_a_status_for_a_camera_not_in_the_current_inventory(
+    hass: HomeAssistant,
+) -> None:
+    """A light poll never introduces a status for a camera outside `server.cameras`.
+
+    Otherwise a status the light endpoint still reports for a camera the last
+    heavy reconcile already dropped would linger for up to `RECONCILE_INTERVAL`
+    (the next heavy pass), rather than being filtered at the point it arrives.
+    """
+    entry = _add_entry(hass)
+    server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, server, client)
+    await _start_without_a_real_timer(coordinator)
+
+    status_1 = make_camera_status(1)
+    status_99 = make_camera_status(99)  # not in `server.cameras`
+    client.async_get_camera_status = AsyncMock(return_value=(status_1, status_99))
+    await _poll_light_status_now(coordinator)
+
+    assert set(coordinator.data.camera_statuses) == {1}
+
+
+async def test_light_poll_survives_an_unexpected_failure(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unmodelled exception from the light poll does not kill the timer callback."""
+    entry = _add_entry(hass)
+    server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, server, client)
+    await _start_without_a_real_timer(coordinator)
+    before = coordinator.data
+
+    client.async_get_camera_status = AsyncMock(side_effect=RuntimeError("boom"))
+    with caplog.at_level("ERROR"):
+        await _poll_light_status_now(coordinator)
+
+    assert coordinator.data is before
+    assert any(record.levelname == "ERROR" for record in caplog.records)
+
+
+async def test_heavy_reconcile_drops_status_for_a_camera_removed_from_inventory(
+    hass: HomeAssistant,
+) -> None:
+    """A camera gone from `server.cameras` by the time reconcile applies loses its status entry."""
+    entry = _add_entry(hass)
+    initial = make_server_info_with_cameras(
+        cameras=(make_camera(1, "Driveway"), make_camera(2, "Front Door"))
+    )
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, initial, client)
+    await _start_without_a_real_timer(coordinator)
+
+    status_1 = make_camera_status(1, error="e/network")
+    status_2 = make_camera_status(2)
+    client.async_get_camera_status = AsyncMock(return_value=(status_1, status_2))
+    await _poll_light_status_now(coordinator)
+    assert set(coordinator.data.camera_statuses) == {1, 2}
+
+    shrunk = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client.async_get_server_info = AsyncMock(return_value=shrunk)
+    await _reconcile_now(coordinator)
+
+    assert set(coordinator.data.camera_statuses) == {1}

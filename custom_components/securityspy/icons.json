@@ -1,0 +1,27 @@
+{
+  "entity": {
+    "sensor": {
+      "cpu_usage": {
+        "default": "mdi:cpu-64-bit"
+      },
+      "memory_pressure": {
+        "default": "mdi:memory"
+      },
+      "camera_count": {
+        "default": "mdi:cctv"
+      },
+      "cert_expiry_days": {
+        "default": "mdi:certificate-outline"
+      },
+      "current_fps": {
+        "default": "mdi:filmstrip"
+      },
+      "data_rate": {
+        "default": "mdi:network"
+      },
+      "last_error": {
+        "default": "mdi:alert-circle-outline"
+      }
+    }
+  }
+}
