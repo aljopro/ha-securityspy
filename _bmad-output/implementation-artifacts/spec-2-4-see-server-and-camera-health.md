@@ -2,8 +2,9 @@
 title: 'Story 2.4 — See server and camera health'
 type: 'feature'
 created: '2026-09-12'
-status: 'in-review'
+status: 'done'
 baseline_revision: '5a8ee08ea269d185cea4bb4ab841862c8ec6c73f'
+final_revision: '26df01296858d059cf05b1b1410fd1d842b12c04'
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
