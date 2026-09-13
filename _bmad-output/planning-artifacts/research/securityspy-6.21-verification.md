@@ -865,6 +865,10 @@ only HMAC strings in the binary are OpenSSL's generic algorithm table, not evide
 token's construction. Jensen confirms she does not know how they are generated either.
 Treating them as **server-minted and human-copied** is the safe reading.
 
+**No all-cameras token exists** (Jensen checked the URL Generator, 2026-09-13): every token is
+issued for one camera, so token auth would cost one manual paste per camera and endpoint. This
+is part of why FR-22 routes live video through the library relay instead (AD-13 item 3).
+
 ### There are TWO `auth=` forms, and only one is safe ⚠
 
 SecuritySpy's own documentation describes `auth=` as "the Base64-encoded version of the string
