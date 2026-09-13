@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-09-13'
 status: 'done'
 baseline_revision: 'da1778a3bcb724f1e3d5831fb0829b0f8d129310' # aiosecurityspy HEAD; ha-securityspy HEAD 00863d78a3b9c50d425e7ed7b20f93bdce0b77ba
-final_revision: '03774b6ca8c22f647b0b83d1b61fc930a7f61738' # aiosecurityspy HEAD
+final_revision: '96b42640b71ede10b5831c212b30db372e1a12cf' # aiosecurityspy HEAD, after the follow-up review fixes (story commit 03774b6)
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
@@ -180,3 +180,33 @@ Status: done
 - The upstream leg is cleartext RTSP on the LAN even when the client uses HTTPS. This is documented; SecuritySpy offers no RTSPS.
 - The relay still reads message heads one byte at a time. That is correct but slow, and heads are rare within a session.
 - Deferred: the existing client logs the server host at DEBUG on every request (see `deferred-work.md`).
+
+## Follow-up Reviews (2026-09-13)
+
+Two more independent reviews ran at the user's request after the story was marked done. Their fixes are in `aiosecurityspy@96b4264`.
+
+**Second review of `03774b6`.** Every finding below was fixed, and each fix has a test.
+- `[high]` Request smuggling: a lone LF or CR inside a header value was forwarded upstream with the credential appended after it. Control characters now close the connection, header names must be tokens, only allowlisted request headers are forwarded, and request bodies never are.
+- `[high]` Suffix steering: `/<id>/cameraNum=9` was appended after SecuritySpy's query string. The only suffix allowed now is `/trackID=N`, canonicalised.
+- `[medium]` Any response header, including `Location` and `Via`, reached the consumer. Response headers are now allowlisted, URLs are rewritten in all of them, and a 3xx is answered with 502.
+- `[medium]` A reused CSeq could forge "playing" and lift the read timeout. CSeq must now be present and strictly increasing; responses pair with pending requests, and a stream plays only after a paired SETUP and PLAY.
+- `[medium]` Connections were unbounded. The relay now serves at most `MAX_CONNECTIONS` (503 beyond that), and a connection that never names a stream gets one absolute deadline.
+- `[low]` Consumer `$` frames were forwarded before SETUP. Frames now pass only on channels a successful SETUP negotiated.
+- `[low]` Writes had no deadline. Drains are now bounded by the client timeout.
+
+**Re-review of those fixes.** Three problems were confirmed and fixed, and one test that could not fail was replaced.
+- `[high]` The SETUP check matched substrings, so a UDP transport listed ahead of TCP, even one with `destination=`, reached SecuritySpy. The relay now sends only a transport it rebuilds itself, `RTP/AVP/TCP;unicast;interleaved=a-(a+1)`.
+- `[medium]` Repeated headers were forwarded while only the first copy was checked. A repeat of any forwarded header is now a 400, and a repeated `Content-Length` closes the connection.
+- `[medium]` A padded CSeq (`01`) never paired with SecuritySpy's unpadded echo, so a legitimate stream would drop between keep-alives. CSeq values are now compared as numbers.
+- `[test]` The old second half of the reused-CSeq test could not fail. It is replaced by a real SETUP and PLAY pairing test that also covers padding, plus a test that frames on an unnegotiated channel are refused. The unbound deadline is now also capped at `UNBOUND_SECONDS`.
+
+**Verification after both rounds**
+- `uv run pytest -q`: 1077 passed, 15 skipped.
+- `ruff check`, `ruff format --check` and `mypy --strict src tests`: clean.
+- Live, on the reference server: camera 4 decoded h264 at 640x480 through the relay, with no host, `:8000`, `auth=`, `WWW-Authenticate`, `SS-UUID` or credential in ffprobe's trace, and `Content-Base` pointing at the relay. A 20-second ffmpeg playback through the relay passed with no errors except SecuritySpy's own dts warnings, which also appear on a direct stream without the relay.
+
+**Remaining known limits** (accepted, not fixed)
+- A consumer whose socket stays unwritable for a full client timeout while playing is dropped.
+- With a non-loopback bind, a LAN peer can occupy the 16 connection slots. There is no per-peer cap.
+- The relay reads message heads one byte at a time.
+- AC3 (a consumer on another host) has still not been tried from a second machine.
