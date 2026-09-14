@@ -88,5 +88,18 @@
         "name": "Update"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SecuritySpy options",
+        "data": {
+          "create_camera_entities": "Create live video entities"
+        },
+        "data_description": {
+          "create_camera_entities": "Adds a camera entity for each SecuritySpy camera this account may view live. Video is relayed through Home Assistant, so no stream address ever contains your password. Turning this off removes the camera entities and stops every stream address already handed out."
+        }
+      }
+    }
   }
 }

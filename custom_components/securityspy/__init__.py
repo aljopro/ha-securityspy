@@ -8,6 +8,8 @@ The coordinator (``coordinator.py``) and the device-identity builders
 (``entity.py``) exist as of story 2.3, and setup starts the coordinator here
 before forwarding platform setups. Story 2.4 adds the first entity classes
 and platform module (``sensor.py``), so :data:`PLATFORMS` is no longer empty.
+Story 2.6 adds the ``camera`` platform and the library RTSP relay it streams
+through, so no credential-bearing URL ever leaves the library (AD-13).
 """
 
 from __future__ import annotations
@@ -42,18 +44,19 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN
+from .const import CONF_CREATE_CAMERA_ENTITIES, DOMAIN
 from .coordinator import SecuritySpyDataUpdateCoordinator
 
 _LOGGER: Final = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from aiosecurityspy import ServerInfo
+    from aiosecurityspy import RtspRelay, ServerInfo
     from homeassistant.core import HomeAssistant
 
 #: Story 2.4 added the first platform: diagnostic sensors for hub and camera
-#: health. Story 2.5 adds a single hub-level update entity.
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.UPDATE]
+#: health. Story 2.5 adds a single hub-level update entity, and story 2.6 the
+#: live video camera entities.
+PLATFORMS: list[Platform] = [Platform.CAMERA, Platform.SENSOR, Platform.UPDATE]
 
 
 @dataclass
@@ -67,6 +70,9 @@ class SecuritySpyRuntimeData:
     client: SecuritySpyClient
     server: ServerInfo
     coordinator: SecuritySpyDataUpdateCoordinator
+    #: The started RTSP relay, or ``None`` when camera entities are off, the
+    #: server publishes no RTSP port, or the relay could not bind.
+    relay: RtspRelay | None = None
 
 
 #: Typed config entry. Every function that takes an entry uses this alias, so
@@ -191,8 +197,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
         raise ConfigEntryNotReady(translation_domain=DOMAIN, translation_key="unknown") from err
 
     coordinator = SecuritySpyDataUpdateCoordinator(hass, entry, client, server)
+    relay = await _async_start_relay(entry, client, server)
     entry.runtime_data = SecuritySpyRuntimeData(
-        client=client, server=server, coordinator=coordinator
+        client=client, server=server, coordinator=coordinator, relay=relay
     )
 
     # Registers devices from the server already fetched above -- no second
@@ -202,6 +209,47 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def _async_start_relay(
+    entry: SecuritySpyConfigEntry, client: SecuritySpyClient, server: ServerInfo
+) -> RtspRelay | None:
+    """Start the RTSP relay the camera entities stream through, if one applies.
+
+    The relay exists only while the ``create_camera_entities`` option is on, so
+    turning the option off (which reloads the entry) stops it and every address
+    it issued: relay addresses cannot be revoked one by one. Opening its
+    listener sends nothing to SecuritySpy; an upstream connection is made only
+    when a consumer plays a stream.
+
+    Args:
+        entry: The config entry being set up. The relay's stop is registered on
+            its unload.
+        client: The client whose credential the relay authenticates with.
+        server: The permission-scoped inventory the relay serves.
+
+    Returns:
+        The started relay, or ``None`` when the option is off, the server
+        publishes no RTSP port, or the local listener could not bind.
+
+    """
+    if not entry.options.get(CONF_CREATE_CAMERA_ENTITIES, True) or server.rtsp_port is None:
+        return None
+    # Loopback bind and library defaults: only this Home Assistant's own stream
+    # worker needs to reach it.
+    relay = client.create_rtsp_relay(server)
+    try:
+        await relay.async_start()
+    except OSError:
+        # No detail: the entities still offer stills, and a bind error names
+        # only local addresses that would not help anyone reading the log.
+        _LOGGER.warning(
+            "Could not start the local live video relay; SecuritySpy camera "
+            "streams are unavailable until the entry is reloaded"
+        )
+        return None
+    entry.async_on_unload(relay.async_stop)
+    return relay
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) -> bool:

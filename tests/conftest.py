@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Final
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiosecurityspy import Camera, CameraStatus, ServerInfo
@@ -65,6 +65,7 @@ def make_server_info(  # noqa: PLR0913 - each kwarg is a distinct optional healt
     memory_pressure: float | None = None,
     cert_expiry_days: int | None = None,
     update_version: str | None = None,
+    rtsp_port: int | None = 8000,
 ) -> ServerInfo:
     """Build a ``ServerInfo`` without going near the wire."""
     return ServerInfo(
@@ -77,6 +78,7 @@ def make_server_info(  # noqa: PLR0913 - each kwarg is a distinct optional healt
         memory_pressure=memory_pressure,
         cert_expiry_days=cert_expiry_days,
         update_version=update_version,
+        rtsp_port=rtsp_port,
     )
 
 
@@ -130,6 +132,7 @@ def make_server_info_with_cameras(
     cameras: tuple[Camera, ...] = (),
     *,
     update_version: str | None = None,
+    rtsp_port: int | None = 8000,
 ) -> ServerInfo:
     """Build a ``ServerInfo`` carrying the given cameras, keyed by number.
 
@@ -139,6 +142,7 @@ def make_server_info_with_cameras(
         cameras: The cameras to inventory; defaults to two, matching the
             "N cameras" row of the story's I/O matrix.
         update_version: The offered update version, if any.
+        rtsp_port: The server's RTSP port, or ``None`` when it publishes none.
 
     Returns:
         A `ServerInfo` with `cameras` populated from the given entries.
@@ -156,7 +160,34 @@ def make_server_info_with_cameras(
         camera_count=len(entries),
         cameras={camera.number: camera for camera in entries},
         update_version=update_version,
+        rtsp_port=rtsp_port,
     )
+
+
+#: The address the mocked relay hands out: credential-free, loopback-bound.
+RELAY_URL: Final = "rtsp://127.0.0.1:55554/Zm9yLXRlc3Rpbmctb25seQ"
+
+
+def make_relay() -> MagicMock:
+    """Build a stand-in `RtspRelay` that listens on nothing.
+
+    Returns:
+        A mock whose start and stop are awaitable and whose `stream_url`
+        returns :data:`RELAY_URL`.
+
+    """
+    relay = MagicMock()
+    relay.async_start = AsyncMock()
+    relay.async_stop = AsyncMock()
+    relay.stream_url.return_value = RELAY_URL
+    return relay
+
+
+@pytest.fixture
+def mock_relay(mock_client: MagicMock) -> MagicMock:
+    """Return the relay the mocked client's `create_rtsp_relay` hands out."""
+    relay: MagicMock = mock_client.create_rtsp_relay.return_value
+    return relay
 
 
 @pytest.fixture(autouse=True)
@@ -189,6 +220,7 @@ def mock_client_class() -> Generator[MagicMock]:
         # an empty tuple is the non-breaking default `SecuritySpyData` itself
         # starts with.
         client_class.return_value.async_get_camera_status.return_value = ()
+        client_class.return_value.create_rtsp_relay.return_value = make_relay()
         yield client_class
 
 

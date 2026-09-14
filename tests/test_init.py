@@ -19,10 +19,14 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_SSL, CONF_VERIFY_
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
-from custom_components.securityspy.const import DOMAIN, RECONCILE_INTERVAL
+from custom_components.securityspy.const import (
+    CONF_CREATE_CAMERA_ENTITIES,
+    DOMAIN,
+    RECONCILE_INTERVAL,
+)
 from custom_components.securityspy.coordinator import SecuritySpyDataUpdateCoordinator
 
-from .conftest import MOCK_USER_INPUT, SERVER_NAME, SERVER_UUID, https_input
+from .conftest import MOCK_USER_INPUT, SERVER_NAME, SERVER_UUID, https_input, make_server_info
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -363,3 +367,82 @@ async def test_unload_cancels_the_coordinators_reconciliation_timer(
         await hass.async_block_till_done()
 
     reconcile.assert_not_called()
+
+
+async def test_setup_starts_the_relay_and_unload_stops_it(
+    hass: HomeAssistant, mock_client: MagicMock, mock_relay: MagicMock
+) -> None:
+    """The relay is built from the fetched server, started once, and stopped on unload."""
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_client.create_rtsp_relay.assert_called_once_with(entry.runtime_data.server)
+    mock_relay.async_start.assert_awaited_once()
+    assert entry.runtime_data.relay is mock_relay
+    mock_relay.async_stop.assert_not_awaited()
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_relay.async_stop.assert_awaited_once()
+
+
+async def test_setup_skips_the_relay_while_camera_entities_are_off(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """With the option off, no relay exists to hand out a stream address."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_USER_INPUT,
+        options={CONF_CREATE_CAMERA_ENTITIES: False},
+        unique_id=SERVER_UUID,
+        title=SERVER_NAME,
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_client.create_rtsp_relay.assert_not_called()
+    assert entry.runtime_data.relay is None
+
+
+async def test_setup_skips_the_relay_without_an_rtsp_port(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """A server publishing no RTSP port gets no relay, and setup still succeeds."""
+    mock_client.async_get_server_info.return_value = make_server_info(rtsp_port=None)
+    entry = _add_entry(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    mock_client.create_rtsp_relay.assert_not_called()
+    assert entry.runtime_data.relay is None
+
+
+async def test_setup_tolerates_a_relay_that_cannot_bind(
+    hass: HomeAssistant,
+    mock_client: MagicMock,  # noqa: ARG001 - keeps the client patched for setup
+    mock_relay: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A bind failure is one detail-free warning, no relay, and a loaded entry."""
+    mock_relay.async_start.side_effect = OSError("[Errno 48] Address already in use")
+    entry = _add_entry(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.relay is None
+    warnings = [record for record in caplog.records if "relay" in record.getMessage()]
+    assert len(warnings) == 1
+    assert warnings[0].levelname == "WARNING"
+    assert "Errno" not in warnings[0].getMessage()
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    mock_relay.async_stop.assert_not_awaited()

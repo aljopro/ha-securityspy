@@ -37,3 +37,8 @@ RECONCILE_INTERVAL: Final[timedelta] = timedelta(minutes=10)
 #: ~800B request. A tunable, not an architectural commitment -- a later story
 #: may move this to options.
 LIGHT_POLL_INTERVAL: Final[timedelta] = timedelta(seconds=30)
+
+#: Options key: whether a live video `camera` entity exists per camera. On by
+#: default. Turning it off reloads the entry, which stops the RTSP relay and so
+#: every stream address it issued (story 2.6).
+CONF_CREATE_CAMERA_ENTITIES: Final = "create_camera_entities"

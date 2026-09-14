@@ -32,7 +32,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.securityspy.config_flow import STEP_USER_DATA_SCHEMA
-from custom_components.securityspy.const import DOMAIN
+from custom_components.securityspy.const import CONF_CREATE_CAMERA_ENTITIES, DOMAIN
 
 from .conftest import (
     MOCK_HTTPS_USER_INPUT,
@@ -363,3 +363,50 @@ async def test_same_server_at_another_address_aborts(
     assert result["reason"] == "already_configured"
     assert len(hass.config_entries.async_entries(DOMAIN)) == 1
     assert mock_client.async_get_server_info.await_count == 1
+
+
+async def test_options_flow_shows_the_default(hass: HomeAssistant) -> None:
+    """An entry with no stored options offers camera entities switched on."""
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_USER_INPUT, unique_id=SERVER_UUID)
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    schema = result["data_schema"]
+    assert schema is not None
+    assert schema({}) == {CONF_CREATE_CAMERA_ENTITIES: True}
+
+
+@pytest.mark.parametrize("value", [False, True])
+async def test_options_flow_saves_and_reloads(
+    hass: HomeAssistant,
+    mock_client: MagicMock,  # noqa: ARG001 - keeps the client patched for the reload
+    value: bool,  # noqa: FBT001 - parametrized flag
+) -> None:
+    """A submitted option is stored and the entry reloads to apply it."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_USER_INPUT,
+        options={CONF_CREATE_CAMERA_ENTITIES: not value},
+        unique_id=SERVER_UUID,
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    with patch.object(
+        hass.config_entries,
+        "async_schedule_reload",
+        wraps=hass.config_entries.async_schedule_reload,
+    ) as schedule_reload:
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_CREATE_CAMERA_ENTITIES: value}
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {CONF_CREATE_CAMERA_ENTITIES: value}
+    schedule_reload.assert_called_once_with(entry.entry_id)

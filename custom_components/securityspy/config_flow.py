@@ -26,7 +26,12 @@ from aiosecurityspy import (
     SecuritySpyUnsupportedVersionError,
     ServerInfo,
 )
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
 from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -35,6 +40,7 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_VERIFY_SSL,
 )
+from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
@@ -44,7 +50,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .const import DEFAULT_PORT, DOMAIN
+from .const import CONF_CREATE_CAMERA_ENTITIES, DEFAULT_PORT, DOMAIN
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -173,10 +179,59 @@ def _preserved_values(user_input: Mapping[str, Any] | None) -> dict[str, Any]:
     return {key: value for key, value in user_input.items() if key != CONF_PASSWORD}
 
 
+OPTIONS_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_CREATE_CAMERA_ENTITIES, default=True): BooleanSelector(),
+    }
+)
+
+
+class SecuritySpyOptionsFlow(OptionsFlowWithReload):
+    """Handle the tuning options for a SecuritySpy entry.
+
+    `OptionsFlowWithReload` reloads the entry when the options change. That is
+    load-bearing for live video: relay addresses cannot be revoked one by one,
+    so only stopping the relay -- which the reload does -- stops them working.
+    """
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Show the options form, or save the submitted options.
+
+        Args:
+            user_input: The submitted form values, or ``None`` on first display.
+
+        Returns:
+            The form, prefilled with the current options, or the saved options.
+
+        """
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                OPTIONS_SCHEMA, self.config_entry.options
+            ),
+        )
+
+
 class SecuritySpyConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for SecuritySpy."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> SecuritySpyOptionsFlow:  # noqa: ARG004 - required signature
+        """Return the options flow for an entry.
+
+        Args:
+            config_entry: The entry whose options are edited.
+
+        Returns:
+            A new options flow.
+
+        """
+        return SecuritySpyOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step, where the user describes their server.

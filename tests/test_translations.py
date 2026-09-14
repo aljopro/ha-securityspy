@@ -85,3 +85,11 @@ def test_every_form_field_is_labelled_and_described() -> None:
     user_step = _load(STRINGS)["config"]["step"]["user"]
     assert set(user_step["data"]) == fields
     assert set(user_step["data_description"]) == fields
+
+
+def test_every_option_is_labelled_and_described() -> None:
+    """The options step labels and explains every option it collects."""
+    fields = {str(marker) for marker in config_flow.OPTIONS_SCHEMA.schema}
+    init_step = _load(STRINGS)["options"]["step"]["init"]
+    assert set(init_step["data"]) == fields
+    assert set(init_step["data_description"]) == fields
