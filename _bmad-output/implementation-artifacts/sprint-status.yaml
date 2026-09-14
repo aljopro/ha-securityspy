@@ -77,7 +77,7 @@ development_status:
   2-4-see-server-and-camera-health: done
   2-5-know-when-a-securityspy-update-is-available: done
   2-6-live-video-without-exposing-credentials: done
-  2-7-only-create-entities-the-user-is-permitted-to-use: backlog
+  2-7-only-create-entities-the-user-is-permitted-to-use: done
   2-8-re-enter-credentials-when-they-stop-working: backlog
   2-9-change-connection-details-without-losing-history: backlog
   epic-2-retrospective: optional
