@@ -27,6 +27,7 @@ A Python developer can talk to a SecuritySpy server from an ordinary script — 
 - Story 1.17: Redact secrets and identifying detail, not just credentials
 - Story 1.18: One call for the cameras you may see, in their current state
 - Story 1.19: Relay live video without handing out credentials
+- Story 1.20: Fetch a camera's live still image
 
 ## Requirements & Constraints
 
@@ -53,6 +54,7 @@ A Python developer can talk to a SecuritySpy server from an ordinary script — 
 - Frozen, typed models throughout (server info, camera, capture, health, permissions, trigger reasons) — decoding must tolerate missing/malformed fields by falling back to `None` rather than failing the whole decode, and must fail loudly (not silently return an empty inventory) when an envelope shape is unrecognized.
 - Capture size decodes as a fractional megabyte float, not a truncated integer.
 - The RTSP live-video relay is a library component: it rewrites a captured real `DESCRIBE`/`SETUP`/`PLAY` exchange so consumers (go2rtc, ffmpeg, VLC, Frigate) get a stream URL with no userinfo/`auth=` and never see SecuritySpy's real address; UDP `SETUP` and unknown identifiers are refused and logged without the credential-bearing path.
+- Live still images are fetched from the library with header (Basic) authentication only — no userinfo or `auth=` in the URL, never extracted from the live stream; only cameras visible to the account are addressable, and optional size/quality arguments are validated before any request.
 - Later stories in this epic (1.8–1.10) exist because story 1.2 implemented "at minimum server UUID, version, camera count, camera list" literally, leaving health fields, the cheap `camStatus` poll, capture media, `schedule-list`, and the camera-enable write unassigned — these are hard blockers for Epic 2, 4, and 6 stories and must land before their consumers are dispatched.
 
 ## Cross-Story Dependencies
@@ -63,5 +65,5 @@ A Python developer can talk to a SecuritySpy server from an ordinary script — 
 - Story 1.12 (real-server camera inventory decoding) hard-blocks FR-1 and every camera-scoped requirement across all later epics.
 - Story 1.13 (server timezone) protects the correctness of FR-1 through FR-8, used throughout Epic 4 and Epic 5.
 - Story 1.16 (mode-selecting arming write) is a prerequisite for Epic 6's arming controls (FR-12, FR-13).
-- Story 1.19 (RTSP relay) is consumed by Epic 2's live-video camera entities (FR-22).
+- Stories 1.19 (RTSP relay) and 1.20 (live still image) are both consumed by Epic 2's live-video camera entities (Story 2.6, FR-22). Story 1.20 reuses 1.14's media-`401` rule and the 1.18/1.19 visible-cameras-only rule.
 - This epic must complete before Epic 2 (Connect and Model), since the architecture forbids the integration from knowing any wire format or endpoint URL — the library is a hard prerequisite for every other epic.

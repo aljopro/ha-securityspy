@@ -206,7 +206,7 @@ Every FR maps to exactly one owning epic. Where another epic also realizes part 
 | FR-19 | Epic 2 | Hub and Camera Device hierarchy |
 | FR-20 | Epic 2 | Correct naming with no manual intervention |
 | FR-21 | Epic 2 | Stable identity from server UUID and camera number |
-| FR-22 | Epic 1, Epic 2 | Library RTSP relay (1.19); live video entities, enabled by default, with an option to skip them (2.6) |
+| FR-22 | Epic 1, Epic 2 | Library RTSP relay (1.19) and live still image (1.20); live video entities, enabled by default, with an option to skip them (2.6) |
 | FR-23 | Epic 2 | Server and per-camera diagnostic sensors |
 | FR-24 | Epic 2 | Server update-available signal |
 | FR-25 | Epic 2 | UI configuration flow |
@@ -793,6 +793,39 @@ So that an RTSP consumer (go2rtc, ffmpeg, VLC, Frigate) can show live video with
 **When** every log record at every level is inspected
 **Then** neither the password nor its base64 form appears in any of them
 
+### Story 1.20: Fetch a camera's live still image
+
+As a Python developer,
+I want to fetch a current JPEG snapshot of a camera with header authentication,
+So that a consumer such as Home Assistant can show a camera's still image without the credential reaching a URL or a log, and without reading a frame out of the live stream. *(FR-22, FR-41, FR-42)*
+
+**Acceptance Criteria:**
+
+**Given** a camera present in `server_info.cameras`
+**When** `async_get_camera_image(server_info, camera_number)` is called
+**Then** it requests `++image?cameraNum=N` with an `Authorization: Basic` header, and returns the JPEG bytes and content type
+**And** the request URL carries no userinfo or `auth=` parameter
+
+**Given** optional `width` and `quality` arguments
+**When** they are supplied
+**Then** they are sent as `width=` and `quality=` query parameters, and a width that isn't a positive integer, or a quality outside 0–100, is refused with `ValueError` before any request is made
+
+**Given** a camera number absent from `server_info.cameras`
+**When** a still image is requested
+**Then** no request is sent, and `SecuritySpyPermissionError` names the live-view permission, following the story 1.18 and 1.19 rule that only visible cameras are addressable
+
+**Given** a server that answers `401`, is unreachable, times out, or returns a body that isn't an image
+**When** a still image is requested
+**Then** the failure maps to the library's existing exception types, applying story 1.14's rule that a media `401` can mean a missing permission rather than bad credentials
+
+**Given** any still-image request, successful or failed
+**When** every log record at every level is inspected
+**Then** neither the password nor its base64 form appears, and the new method is covered by the credential-containment URL sweep
+
+**Given** the reference server
+**When** a live test fetches a still image for a visible camera
+**Then** it receives a decodable JPEG
+
 
 ## Epic 2: Connect and Model
 
@@ -927,7 +960,7 @@ So that I find out from Home Assistant rather than by chance. *(FR-24)*
 
 As a Home Assistant user,
 I want each SecuritySpy camera to stream live on its device with no setup,
-So that I can watch my cameras in Home Assistant without my SecuritySpy password ending up in a URL or a log. *(FR-22; depends on Story 1.19)*
+So that I can watch my cameras in Home Assistant without my SecuritySpy password ending up in a URL or a log. *(FR-22; depends on Stories 1.19 and 1.20)*
 
 **Acceptance Criteria:**
 
