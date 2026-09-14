@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Final
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from aiosecurityspy import Camera, CameraStatus, ServerInfo
+from aiosecurityspy import PERM_LIVEVIDEO, Camera, CameraStatus, ServerInfo
 from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -87,18 +87,23 @@ def make_camera(  # noqa: PLR0913 - each kwarg is a distinct optional health fie
     name: str,
     *,
     enabled: bool = True,
+    permissions: int = PERM_LIVEVIDEO,
     current_fps: float | None = None,
     data_rate: float | None = None,
     last_error: str | None = None,
     last_error_description: str | None = None,
 ) -> Camera:
-    """Build a ``Camera`` without going near the wire."""
+    """Build a ``Camera`` without going near the wire.
+
+    ``permissions`` defaults to live video alone: ``++systemInfo`` never lists a
+    camera without it (DW-5), so that is the least an inventoried camera holds.
+    """
     return Camera(
         number=number,
         name=name,
         connected=True,
         enabled=enabled,
-        permissions=0,
+        permissions=permissions,
         current_fps=current_fps,
         data_rate=data_rate,
         last_error=last_error,

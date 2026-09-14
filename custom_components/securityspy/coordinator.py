@@ -60,6 +60,26 @@ class SecuritySpyData:
 
     server: ServerInfo
     camera_statuses: Mapping[int, CameraStatus]
+    #: Each inventoried camera's decoded permission names, keyed by camera
+    #: number and rebuilt from `server` on every heavy refresh. Story 2.7's
+    #: `PermissionGate` reads this; no platform decodes a mask itself.
+    camera_permissions: Mapping[int, frozenset[str]]
+
+
+def _camera_permissions(server: ServerInfo) -> Mapping[int, frozenset[str]]:
+    """Map every inventoried camera to its decoded permission names.
+
+    Args:
+        server: The server whose `cameras` to read.
+
+    Returns:
+        A read-only mapping of camera number to the library's
+        `Camera.permission_names`.
+
+    """
+    return MappingProxyType(
+        {number: camera.permission_names for number, camera in server.cameras.items()}
+    )
 
 
 class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
@@ -96,7 +116,11 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         """
         super().__init__(hass, LOGGER, config_entry=entry, name=DOMAIN, update_interval=None)
         self.client = client
-        self.data = SecuritySpyData(server=server, camera_statuses=MappingProxyType({}))
+        self.data = SecuritySpyData(
+            server=server,
+            camera_statuses=MappingProxyType({}),
+            camera_permissions=_camera_permissions(server),
+        )
 
     async def async_start(self) -> None:
         """Register devices from the already-seeded data, then start polling.
@@ -158,7 +182,12 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         # they are the light poll's responsibility, and a heavy-only refresh
         # must not reset them to empty.
         self.async_set_updated_data(
-            replace(self.data, server=server, camera_statuses=self._pruned_statuses(server))
+            replace(
+                self.data,
+                server=server,
+                camera_statuses=self._pruned_statuses(server),
+                camera_permissions=_camera_permissions(server),
+            )
         )
 
     async def _async_poll_light_status(self, _now: datetime | None = None) -> None:

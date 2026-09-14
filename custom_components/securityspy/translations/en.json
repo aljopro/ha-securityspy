@@ -101,5 +101,11 @@
         }
       }
     }
+  },
+  "issues": {
+    "missing_permission": {
+      "title": "SecuritySpy account lacks the {permission} permission",
+      "description": "The SecuritySpy account Home Assistant connects with does not have the {permission} permission for these cameras: {cameras}. Their entities that need it were not created. To grant it, open SecuritySpy, go to Settings → Web → Accounts, edit this account's camera permissions, then reload the SecuritySpy integration."
+    }
   }
 }

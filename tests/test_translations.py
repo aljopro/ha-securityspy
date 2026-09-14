@@ -93,3 +93,13 @@ def test_every_option_is_labelled_and_described() -> None:
     init_step = _load(STRINGS)["options"]["step"]["init"]
     assert set(init_step["data"]) == fields
     assert set(init_step["data_description"]) == fields
+
+
+def test_missing_permission_issue_names_permission_cameras_and_where_to_grant() -> None:
+    """The repair issue text carries both placeholders and the SecuritySpy location."""
+    issue = _load(STRINGS)["issues"]["missing_permission"]
+    assert "{permission}" in issue["title"]
+    assert "{cameras}" in issue["description"]
+    assert "{permission}" in issue["description"]
+    assert "Settings → Web → Accounts" in issue["description"]
+    assert "reload" in issue["description"]

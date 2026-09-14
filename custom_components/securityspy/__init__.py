@@ -10,6 +10,9 @@ before forwarding platform setups. Story 2.4 adds the first entity classes
 and platform module (``sensor.py``), so :data:`PLATFORMS` is no longer empty.
 Story 2.6 adds the ``camera`` platform and the library RTSP relay it streams
 through, so no credential-bearing URL ever leaves the library (AD-13).
+Story 2.7 adds the shared permission gate (``permissions.py``): platforms ask it
+before creating a permission-dependent entity, and setup turns its recorded
+denials into repair issues once every platform has been forwarded.
 """
 
 from __future__ import annotations
@@ -42,10 +45,12 @@ from homeassistant.exceptions import (
     ConfigEntryError,
     ConfigEntryNotReady,
 )
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import CONF_CREATE_CAMERA_ENTITIES, DOMAIN
 from .coordinator import SecuritySpyDataUpdateCoordinator
+from .permissions import PermissionGate, issue_id
 
 _LOGGER: Final = logging.getLogger(__name__)
 
@@ -70,6 +75,8 @@ class SecuritySpyRuntimeData:
     client: SecuritySpyClient
     server: ServerInfo
     coordinator: SecuritySpyDataUpdateCoordinator
+    #: The one permission gate every platform consults (story 2.7).
+    permission_gate: PermissionGate
     #: The started RTSP relay, or ``None`` when camera entities are off, the
     #: server publishes no RTSP port, or the relay could not bind.
     relay: RtspRelay | None = None
@@ -199,7 +206,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
     coordinator = SecuritySpyDataUpdateCoordinator(hass, entry, client, server)
     relay = await _async_start_relay(entry, client, server)
     entry.runtime_data = SecuritySpyRuntimeData(
-        client=client, server=server, coordinator=coordinator, relay=relay
+        client=client,
+        server=server,
+        coordinator=coordinator,
+        permission_gate=PermissionGate(coordinator, entry.entry_id),
+        relay=relay,
     )
 
     # Registers devices from the server already fetched above -- no second
@@ -208,6 +219,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
     await coordinator.async_start()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # After forwarding, so every platform has asked the gate: one issue per
+    # denied permission lists every affected camera, and any permission no
+    # longer denied has its issue cleared.
+    entry.runtime_data.permission_gate.async_update_issues(hass)
     return True
 
 
@@ -268,4 +283,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry)
     # `async_start`, and `ConfigEntry._async_process_on_unload` runs those
     # callbacks unconditionally on unload -- independent of whether any
     # platform was forwarded, so an empty `PLATFORMS` does not skip it.
+    # Missing-permission issues are deliberately left in place: a reload
+    # re-evaluates them, and only `async_remove_entry` deletes them.
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) -> None:
+    """Delete the missing-permission issues of a removed config entry.
+
+    Unload leaves them in place so a reload can re-evaluate them; only removal
+    means nothing will. Only this entry's issues go; another server's stay.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry being removed.
+
+    """
+    for permission in PermissionGate.permission_names():
+        ir.async_delete_issue(hass, DOMAIN, issue_id(entry.entry_id, permission))

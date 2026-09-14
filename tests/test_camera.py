@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 from aiosecurityspy import (
+    PERM_LIVEVIDEO,
+    PERM_SCHED,
     CameraImage,
     SecuritySpyAuthError,
     SecuritySpyConnectError,
@@ -29,12 +31,14 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.securityspy.const import CONF_CREATE_CAMERA_ENTITIES, DOMAIN
+from custom_components.securityspy.permissions import issue_id
 
 from .conftest import (
     MOCK_USER_INPUT,
     RELAY_URL,
     SERVER_NAME,
     SERVER_UUID,
+    make_camera,
     make_server_info_with_cameras,
 )
 
@@ -44,11 +48,22 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers import device_registry as dr
     from homeassistant.helpers import entity_registry as er
+    from homeassistant.helpers import issue_registry as ir
 
     from custom_components.securityspy.camera import SecuritySpyCamera
 
 IMAGE_BYTES = b"\xff\xd8\xff\xe0jpeg"
 CAMERA_NUMBERS = (1, 2)
+
+
+def _serve(mock_client: MagicMock, *masks: int) -> None:
+    """Serve cameras numbered from 1, named `Camera N`, one per permission mask."""
+    mock_client.async_get_server_info.return_value = make_server_info_with_cameras(
+        cameras=tuple(
+            make_camera(number, f"Camera {number}", permissions=mask)
+            for number, mask in enumerate(masks, start=1)
+        )
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -68,6 +83,10 @@ def _add_entry(hass: HomeAssistant, *, create_cameras: bool | None = None) -> Mo
     )
     entry.add_to_hass(hass)
     return entry
+
+
+def _live_video_issue(entry: MockConfigEntry) -> str:
+    return issue_id(entry.entry_id, "live_video")
 
 
 async def _setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:
@@ -339,3 +358,95 @@ async def test_no_credential_reaches_the_log(
     assert "SecuritySpyAuthError" in caplog.text
     assert password not in caplog.text
     assert basic not in caplog.text
+
+
+async def test_all_permitted(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    entity_registry: er.EntityRegistry,
+    issue_registry: ir.IssueRegistry,
+) -> None:
+    """Every camera with live video gets an entity, and no issue is raised."""
+    _serve(mock_client, PERM_LIVEVIDEO, PERM_LIVEVIDEO)
+    entry = _add_entry(hass)
+    await _setup(hass, entry)
+
+    for number in CAMERA_NUMBERS:
+        assert _entity_id(entity_registry, number) is not None
+    assert "live_video" in entry.runtime_data.coordinator.data.camera_permissions[1]
+    assert issue_registry.async_get_issue(DOMAIN, _live_video_issue(entry)) is None
+
+
+async def test_per_camera_denial(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    entity_registry: er.EntityRegistry,
+    issue_registry: ir.IssueRegistry,
+) -> None:
+    """A camera without live video gets no entity, and the issue names it."""
+    _serve(mock_client, PERM_LIVEVIDEO, PERM_SCHED)
+    entry = _add_entry(hass)
+    await _setup(hass, entry)
+
+    assert _entity_id(entity_registry, 1) is not None
+    assert _entity_id(entity_registry, 2) is None
+    issue = issue_registry.async_get_issue(DOMAIN, _live_video_issue(entry))
+    assert issue is not None
+    assert issue.translation_placeholders == {"permission": "live_video", "cameras": "Camera 2"}
+
+
+async def test_several_denied(
+    hass: HomeAssistant, mock_client: MagicMock, issue_registry: ir.IssueRegistry
+) -> None:
+    """Several denied cameras share one issue listing them all."""
+    _serve(mock_client, PERM_LIVEVIDEO, PERM_SCHED, PERM_SCHED)
+    entry = _add_entry(hass)
+    await _setup(hass, entry)
+
+    issues = [key for (domain, key) in issue_registry.issues if domain == DOMAIN]
+    assert issues == [_live_video_issue(entry)]
+    issue = issue_registry.async_get_issue(DOMAIN, _live_video_issue(entry))
+    assert issue is not None
+    assert issue.translation_placeholders == {
+        "permission": "live_video",
+        "cameras": "Camera 2, Camera 3",
+    }
+
+
+async def test_granted_and_reloaded(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    entity_registry: er.EntityRegistry,
+    issue_registry: ir.IssueRegistry,
+) -> None:
+    """Granting the permission and reloading creates the entity and clears the issue."""
+    _serve(mock_client, PERM_LIVEVIDEO, PERM_SCHED)
+    entry = _add_entry(hass)
+    await _setup(hass, entry)
+    assert issue_registry.async_get_issue(DOMAIN, _live_video_issue(entry)) is not None
+
+    _serve(mock_client, PERM_LIVEVIDEO, PERM_LIVEVIDEO)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert _entity_id(entity_registry, 2) is not None
+    assert issue_registry.async_get_issue(DOMAIN, _live_video_issue(entry)) is None
+
+
+async def test_option_off_clears_a_stale_issue(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    entity_registry: er.EntityRegistry,
+    issue_registry: ir.IssueRegistry,
+) -> None:
+    """With camera entities off, nothing is gated and a stale denial issue is removed."""
+    _serve(mock_client, PERM_LIVEVIDEO, PERM_SCHED)
+    entry = _add_entry(hass)
+    await _setup(hass, entry)
+    assert issue_registry.async_get_issue(DOMAIN, _live_video_issue(entry)) is not None
+
+    await _set_option(hass, entry, value=False)
+
+    for number in CAMERA_NUMBERS:
+        assert _entity_id(entity_registry, number) is None
+    assert issue_registry.async_get_issue(DOMAIN, _live_video_issue(entry)) is None

@@ -1,6 +1,7 @@
 """Live video camera entities for SecuritySpy (story 2.6).
 
-One `Camera` per camera in the permission-scoped inventory, attached to its
+One `Camera` per camera in the permission-scoped inventory whose account may
+view live video (asked of the shared permission gate, story 2.7), attached to its
 camera device and named after it. The stream source is the library RTSP
 relay's credential-free address, and the still image comes from the library's
 header-authenticated snapshot call -- this module builds no URL and never sees
@@ -35,6 +36,9 @@ _LOGGER: Final = logging.getLogger(__name__)
 #: Streams and stills are fetched on demand, one request per viewer; there is
 #: no per-entity refresh to parallelize.
 PARALLEL_UPDATES = 0
+
+#: The permission a live video entity needs (story 2.7).
+LIVE_VIDEO: Final = "live_video"
 
 #: Entity description key, giving the unique id `{uuid}_{number}_camera`.
 CAMERA_KEY: Final = "camera"
@@ -151,7 +155,13 @@ async def async_setup_entry(
 
     runtime_data = entry.runtime_data
     coordinator = runtime_data.coordinator
+    gate = runtime_data.permission_gate
+    # A list, not a generator: every camera must be asked before setup returns,
+    # so the gate has recorded all denials when `__init__` syncs issues.
     async_add_entities(
-        SecuritySpyCamera(coordinator, camera_number, runtime_data.client, runtime_data.relay)
-        for camera_number in coordinator.data.server.cameras
+        [
+            SecuritySpyCamera(coordinator, camera_number, runtime_data.client, runtime_data.relay)
+            for camera_number in coordinator.data.server.cameras
+            if gate.permitted(camera_number, LIVE_VIDEO)
+        ]
     )

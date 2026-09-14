@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiosecurityspy import (
+    PERM_LIVEVIDEO,
+    PERM_SCHED,
     SecuritySpyAuthError,
     SecuritySpyConnectError,
     SecuritySpyUnsupportedVersionError,
@@ -559,3 +561,30 @@ async def test_heavy_reconcile_drops_status_for_a_camera_removed_from_inventory(
     await _reconcile_now(coordinator)
 
     assert set(coordinator.data.camera_statuses) == {1}
+
+
+async def test_camera_permissions_are_decoded_at_start_and_on_heavy_refresh(
+    hass: HomeAssistant,
+) -> None:
+    """Each inventoried camera's permission names are published, and refreshed."""
+    entry = _add_entry(hass)
+    initial = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, initial, client)
+
+    assert coordinator.data.camera_permissions == {1: frozenset({"live_video"})}
+
+    refreshed = make_server_info_with_cameras(
+        cameras=(
+            make_camera(1, "Driveway", permissions=PERM_LIVEVIDEO | PERM_SCHED),
+            make_camera(2, "Front Door"),
+        )
+    )
+    client.async_get_server_info = AsyncMock(return_value=refreshed)
+    await _start_without_a_real_timer(coordinator)
+    await _reconcile_now(coordinator)
+
+    assert coordinator.data.camera_permissions == {
+        1: frozenset({"live_video", "schedule"}),
+        2: frozenset({"live_video"}),
+    }

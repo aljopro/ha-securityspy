@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from aiosecurityspy import (
+    PERM_LIVEVIDEO,
+    PERM_SCHED,
     SecuritySpyAuthError,
     SecuritySpyCertificateError,
     SecuritySpyConnectError,
@@ -25,11 +27,21 @@ from custom_components.securityspy.const import (
     RECONCILE_INTERVAL,
 )
 from custom_components.securityspy.coordinator import SecuritySpyDataUpdateCoordinator
+from custom_components.securityspy.permissions import issue_id
 
-from .conftest import MOCK_USER_INPUT, SERVER_NAME, SERVER_UUID, https_input, make_server_info
+from .conftest import (
+    MOCK_USER_INPUT,
+    SERVER_NAME,
+    SERVER_UUID,
+    https_input,
+    make_camera,
+    make_server_info,
+    make_server_info_with_cameras,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers import issue_registry as ir
 
 
 def _add_entry(hass: HomeAssistant, data: dict[str, Any] | None = None) -> MockConfigEntry:
@@ -446,3 +458,65 @@ async def test_setup_tolerates_a_relay_that_cannot_bind(
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     mock_relay.async_stop.assert_not_awaited()
+
+
+async def test_missing_permission_issues_survive_unload_and_go_with_the_entry(
+    hass: HomeAssistant, mock_client: MagicMock, issue_registry: ir.IssueRegistry
+) -> None:
+    """Unload keeps the issue for a reload to re-evaluate; removing the entry deletes it."""
+    mock_client.async_get_server_info.return_value = make_server_info_with_cameras(
+        cameras=(make_camera(1, "Driveway", permissions=PERM_SCHED),)
+    )
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    live_video_issue = issue_id(entry.entry_id, "live_video")
+    assert issue_registry.async_get_issue(DOMAIN, live_video_issue) is not None
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert issue_registry.async_get_issue(DOMAIN, live_video_issue) is not None
+
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert not [key for key in issue_registry.issues if key[0] == DOMAIN]
+
+
+async def test_missing_permission_issues_are_scoped_per_entry(
+    hass: HomeAssistant, mock_client: MagicMock, issue_registry: ir.IssueRegistry
+) -> None:
+    """One server's setup or removal never clears another server's issues."""
+    mock_client.async_get_server_info.return_value = make_server_info_with_cameras(
+        cameras=(make_camera(1, "Driveway", permissions=PERM_SCHED),)
+    )
+    entry_a = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry_a.entry_id)
+    await hass.async_block_till_done()
+    issue_a = issue_id(entry_a.entry_id, "live_video")
+    assert issue_registry.async_get_issue(DOMAIN, issue_a) is not None
+
+    other_uuid = "11111111-2222-3333-4444-555555555555"
+    mock_client.async_get_server_info.return_value = make_server_info_with_cameras(
+        uuid=other_uuid,
+        name="Second Server",
+        cameras=(make_camera(1, "Garden", permissions=PERM_LIVEVIDEO),),
+    )
+    entry_b = MockConfigEntry(
+        domain=DOMAIN,
+        data={**MOCK_USER_INPUT, CONF_HOST: "192.168.1.21"},
+        unique_id=other_uuid,
+        title="Second Server",
+    )
+    entry_b.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry_b.entry_id)
+    await hass.async_block_till_done()
+    assert entry_b.state is ConfigEntryState.LOADED
+    assert issue_registry.async_get_issue(DOMAIN, issue_a) is not None
+
+    await hass.config_entries.async_remove(entry_b.entry_id)
+    await hass.async_block_till_done()
+    assert issue_registry.async_get_issue(DOMAIN, issue_a) is not None
+
+    await hass.config_entries.async_remove(entry_a.entry_id)
+    await hass.async_block_till_done()
+    assert issue_registry.async_get_issue(DOMAIN, issue_a) is None
