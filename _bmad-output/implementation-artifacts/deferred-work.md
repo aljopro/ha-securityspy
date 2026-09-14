@@ -324,3 +324,7 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-19-relay-live-video-without-handing-out-credentials.md`
   summary: `SecuritySpyClient` logs the server's host and port at DEBUG on every request (`Requesting %s from %s:%s`), which story 1.17's identifying-detail policy may not intend.
   evidence: Surfaced during the story 1.19 live relay check on 2026-09-13; the relay itself logs no host, but the pre-existing client request log line did, and it predates this story.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-8-re-enter-credentials-when-they-stop-working.md`
+  summary: `coordinator._async_reconcile` guards only `SecuritySpyError` around `async_get_server_info()`, unlike `_async_poll_light_status`, which also catches `Exception`; a non-library error escaping the fetch surfaces as an unhandled timer-task exception rather than the intended logged retry.
+  evidence: Blind Hunter review of story 2.8's diff compared the two poll methods' except-clauses; the asymmetry predates story 2.8 (the heavy fetch's handler was untouched apart from auth counting).
