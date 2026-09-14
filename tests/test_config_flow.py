@@ -6,7 +6,7 @@ including every abort and every error path.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 from unittest.mock import patch
 
 import pytest
@@ -19,7 +19,7 @@ from aiosecurityspy import (
     SecuritySpyPermissionError,
     SecuritySpyUnsupportedVersionError,
 )
-from homeassistant.config_entries import SOURCE_USER
+from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
 from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -29,6 +29,8 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.securityspy.config_flow import STEP_USER_DATA_SCHEMA
@@ -410,3 +412,168 @@ async def test_options_flow_saves_and_reloads(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {CONF_CREATE_CAMERA_ENTITIES: value}
     schedule_reload.assert_called_once_with(entry.entry_id)
+
+
+#: What the user types into the reauth form: the same account, a new password.
+REAUTH_INPUT: Final[dict[str, Any]] = {
+    CONF_USERNAME: "homeassistant",
+    CONF_PASSWORD: "correct-horse",
+}
+
+
+async def _set_up_entry(hass: HomeAssistant) -> MockConfigEntry:
+    """Add and load an entry, so reauth has devices and entities to preserve."""
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_USER_INPUT, unique_id=SERVER_UUID)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def _start_reauth_flow(hass: HomeAssistant, entry: MockConfigEntry) -> dict[str, Any]:
+    """Open the reauth confirm step and assert the form is shown with no error."""
+    result = await entry.start_reauth_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+    assert result["errors"] == {}
+    return dict(result)
+
+
+def _suggestions(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        marker.schema: marker.description["suggested_value"]
+        for marker in result["data_schema"].schema
+        if marker.description is not None
+    }
+
+
+async def test_reauth_form_prefills_only_the_username(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """The form asks for the account alone and never suggests a password."""
+    entry = await _set_up_entry(hass)
+    mock_client.async_get_server_info.reset_mock()
+
+    result = await _start_reauth_flow(hass, entry)
+
+    assert {marker.schema for marker in result["data_schema"].schema} == {
+        CONF_USERNAME,
+        CONF_PASSWORD,
+    }
+    assert _suggestions(result) == {CONF_USERNAME: MOCK_USER_INPUT[CONF_USERNAME]}
+    mock_client.async_get_server_info.assert_not_awaited()
+
+
+async def test_reauth_updates_the_entry_and_keeps_devices_and_entities(
+    hass: HomeAssistant,
+    mock_client_class: MagicMock,
+    device_registry: dr.DeviceRegistry,
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """Working credentials update the same entry in place; nothing is recreated."""
+    entry = await _set_up_entry(hass)
+    devices = {d.id for d in dr.async_entries_for_config_entry(device_registry, entry.entry_id)}
+    entities = {
+        e.entity_id for e in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    }
+    assert devices
+    result = await _start_reauth_flow(hass, entry)
+
+    result = dict(await hass.config_entries.flow.async_configure(result["flow_id"], REAUTH_INPUT))
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert dict(entry.data) == {**MOCK_USER_INPUT, **REAUTH_INPUT}
+    assert hass.config_entries.async_entries(DOMAIN) == [entry]
+    assert entry.state is ConfigEntryState.LOADED
+    # The probe used the entry's own address and TLS settings with the new account.
+    probe_kwargs = mock_client_class.call_args_list[-2].kwargs
+    assert probe_kwargs["password"] == REAUTH_INPUT[CONF_PASSWORD]
+    assert probe_kwargs["use_https"] is MOCK_USER_INPUT[CONF_SSL]
+    assert mock_client_class.call_args_list[-2].args[1:] == (
+        MOCK_USER_INPUT[CONF_HOST],
+        MOCK_USER_INPUT[CONF_PORT],
+    )
+    assert {
+        d.id for d in dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    } == devices
+    assert {
+        e.entity_id for e in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    } == entities
+
+
+async def test_reauth_against_a_different_server_aborts(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """An account that reaches another server's UUID leaves the entry untouched."""
+    entry = await _set_up_entry(hass)
+    result = await _start_reauth_flow(hass, entry)
+    mock_client.async_get_server_info.return_value = make_server_info(uuid="another-server")
+
+    result = dict(await hass.config_entries.flow.async_configure(result["flow_id"], REAUTH_INPUT))
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "wrong_server"
+    assert dict(entry.data) == MOCK_USER_INPUT
+
+
+@pytest.mark.parametrize(
+    ("side_effect", "return_value", "expected_error"),
+    [
+        (SecuritySpyConnectError("192.168.1.20", 8000, "timeout"), None, "cannot_connect"),
+        (SecuritySpyAuthError("192.168.1.20", 8000, 401), None, "invalid_auth"),
+        (SecuritySpyPermissionError("unknown"), None, "permission_denied"),
+        (SecuritySpyUnsupportedVersionError("5.4", "6.0"), None, "unsupported_version"),
+        (
+            SecuritySpyCertificateError("192.168.1.20", 8001, "SSLCertVerificationError"),
+            None,
+            "invalid_certificate",
+        ),
+        (SecuritySpyError("something unforeseen"), None, "unknown"),
+        (TimeoutError("no response"), None, "unknown"),
+        (None, make_server_info(uuid=""), "no_server_uuid"),
+    ],
+)
+async def test_reauth_failures_redisplay_the_form_without_the_password(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    side_effect: Exception | None,
+    return_value: object,
+    expected_error: str,
+) -> None:
+    """Every probe failure keeps the flow, shows its key and echoes no password."""
+    entry = await _set_up_entry(hass)
+    result = await _start_reauth_flow(hass, entry)
+    mock_client.async_get_server_info.side_effect = side_effect
+    if return_value is not None:
+        mock_client.async_get_server_info.return_value = return_value
+    submitted = {CONF_USERNAME: "someone-else", CONF_PASSWORD: "wrong"}
+
+    result = dict(await hass.config_entries.flow.async_configure(result["flow_id"], submitted))
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+    assert result["errors"] == {"base": expected_error}
+    # The username comes back as typed; the password does not come back at all.
+    assert _suggestions(result) == {CONF_USERNAME: "someone-else"}
+    assert dict(entry.data) == MOCK_USER_INPUT
+
+
+async def test_reauth_rejects_an_unusable_account_before_any_call(
+    hass: HomeAssistant, mock_client_class: MagicMock, mock_client: MagicMock
+) -> None:
+    """A credential the client constructor refuses maps to `invalid_host`."""
+    entry = await _set_up_entry(hass)
+    result = await _start_reauth_flow(hass, entry)
+    mock_client.async_get_server_info.reset_mock()
+    mock_client_class.side_effect = ValueError("username must not contain a colon")
+
+    result = dict(
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_USERNAME: "a:b", CONF_PASSWORD: "x"}
+        )
+    )
+
+    assert result["errors"] == {"base": "invalid_host"}
+    mock_client.async_get_server_info.assert_not_awaited()

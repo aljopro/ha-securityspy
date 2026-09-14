@@ -38,6 +38,13 @@ RECONCILE_INTERVAL: Final[timedelta] = timedelta(minutes=10)
 #: may move this to options.
 LIGHT_POLL_INTERVAL: Final[timedelta] = timedelta(seconds=30)
 
+#: How many consecutive `SecuritySpyAuthError`s -- from the heavy poll, the
+#: light poll or the event stream, counted together (AD-18) -- start reauth.
+#: Never one: a single 401 can be a server restarting or an account being
+#: edited, and asking the user for a password over a blip trains them to
+#: ignore the prompt.
+AUTH_FAILURE_THRESHOLD: Final = 3
+
 #: Options key: whether a live video `camera` entity exists per camera. On by
 #: default. Turning it off reloads the entry, which stops the RTSP relay and so
 #: every stream address it issued (story 2.6).

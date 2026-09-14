@@ -179,6 +179,20 @@ def _preserved_values(user_input: Mapping[str, Any] | None) -> dict[str, Any]:
     return {key: value for key, value in user_input.items() if key != CONF_PASSWORD}
 
 
+#: Reauth asks only for the account. Host, port and the TLS toggles stay as the
+#: entry has them: changing where the server is belongs to reconfigure.
+STEP_REAUTH_DATA_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.TEXT, autocomplete="username")
+        ),
+        vol.Required(CONF_PASSWORD): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD, autocomplete="current-password")
+        ),
+    }
+)
+
+
 OPTIONS_SCHEMA: Final = vol.Schema(
     {
         vol.Required(CONF_CREATE_CAMERA_ENTITIES, default=True): BooleanSelector(),
@@ -259,6 +273,68 @@ class SecuritySpyConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
                 STEP_USER_DATA_SCHEMA, _preserved_values(user_input)
+            ),
+            errors=errors,
+        )
+
+    async def async_step_reauth(
+        self,
+        entry_data: Mapping[str, Any],  # noqa: ARG002 - required signature
+    ) -> ConfigFlowResult:
+        """Start reauth after the stored credentials stopped working.
+
+        Args:
+            entry_data: The entry's stored data. Unused: the confirm step reads
+                the entry itself through `_get_reauth_entry`.
+
+        Returns:
+            The confirm form.
+
+        """
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the account again and update the entry in place.
+
+        Args:
+            user_input: The submitted username and password, or ``None`` on
+                first display.
+
+        Returns:
+            An abort once the entry is updated (``reauth_successful``) or the
+            credentials reach a different server (``wrong_server``), or the
+            form again with an error.
+
+        """
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            # Probe the server the entry already points at, with the new account.
+            outcome = await self._async_probe({**entry.data, **user_input})
+            if isinstance(outcome, str):
+                errors["base"] = outcome
+            else:
+                await self.async_set_unique_id(outcome.uuid)
+                # Another server's account must not quietly repoint this entry
+                # and its devices, which are keyed on the original UUID.
+                self._abort_if_unique_id_mismatch(reason="wrong_server")
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates={
+                        CONF_USERNAME: user_input[CONF_USERNAME],
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                    },
+                )
+
+        # Only the username is suggested, never the password -- neither the
+        # stored one nor a rejected attempt (AD-13).
+        username = user_input[CONF_USERNAME] if user_input else entry.data.get(CONF_USERNAME)
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_REAUTH_DATA_SCHEMA, {CONF_USERNAME: username}
             ),
             errors=errors,
         )

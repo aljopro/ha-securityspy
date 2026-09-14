@@ -139,12 +139,11 @@ async def test_setup_maps_library_errors(
 async def test_revoked_credentials_surface_a_translated_auth_failure(
     hass: HomeAssistant, mock_client: MagicMock
 ) -> None:
-    """`ConfigEntryAuthFailed` marks the entry as needing attention, with a message.
+    """`ConfigEntryAuthFailed` marks the entry as needing attention and starts reauth.
 
-    No reauth flow starts yet, and that is correct rather than broken: Home
-    Assistant calls ``async_start_reauth_if_available``, which is a no-op while
-    the flow has no ``async_step_reauth``. Story 2.8 adds that step and the
-    AD-18 counter, and this mapping starts driving it with no change here.
+    Story 2.8 added ``async_step_reauth``, so this unchanged setup-time mapping
+    now opens the reauth flow at once. The AD-18 counter covers failures
+    after setup only.
     """
     mock_client.async_get_server_info.side_effect = SecuritySpyAuthError("192.168.1.20", 8000, 403)
     entry = _add_entry(hass)
@@ -154,7 +153,10 @@ async def test_revoked_credentials_surface_a_translated_auth_failure(
 
     assert entry.state is ConfigEntryState.SETUP_ERROR
     assert entry.error_reason_translation_key == "invalid_auth"
-    assert not hass.config_entries.flow.async_progress()
+    flows = hass.config_entries.flow.async_progress()
+    assert len(flows) == 1
+    assert flows[0]["context"]["source"] == "reauth"
+    assert flows[0]["context"]["entry_id"] == entry.entry_id
 
 
 async def test_setup_rejects_unusable_stored_data(

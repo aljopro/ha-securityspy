@@ -17,6 +17,7 @@ from aiosecurityspy import (
     PERM_SCHED,
     SecuritySpyAuthError,
     SecuritySpyConnectError,
+    SecuritySpyPermissionError,
     SecuritySpyUnsupportedVersionError,
 )
 from homeassistant.config_entries import ConfigEntryState
@@ -24,7 +25,12 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntryType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.securityspy.const import DOMAIN, LIGHT_POLL_INTERVAL, RECONCILE_INTERVAL
+from custom_components.securityspy.const import (
+    AUTH_FAILURE_THRESHOLD,
+    DOMAIN,
+    LIGHT_POLL_INTERVAL,
+    RECONCILE_INTERVAL,
+)
 from custom_components.securityspy.coordinator import SecuritySpyDataUpdateCoordinator
 
 from .conftest import (
@@ -588,3 +594,203 @@ async def test_camera_permissions_are_decoded_at_start_and_on_heavy_refresh(
         1: frozenset({"live_video", "schedule"}),
         2: frozenset({"live_video"}),
     }
+
+
+def _auth_error() -> SecuritySpyAuthError:
+    return SecuritySpyAuthError("192.168.1.20", 8000, 401)
+
+
+async def _start_with_mock_timers(
+    coordinator: SecuritySpyDataUpdateCoordinator,
+) -> list[MagicMock]:
+    """Run `async_start` with stand-in timers, returning their two unsubs."""
+    unsubs = [MagicMock(), MagicMock()]
+    with patch(
+        "custom_components.securityspy.coordinator.async_track_time_interval",
+        side_effect=unsubs,
+    ):
+        await coordinator.async_start()
+    return unsubs
+
+
+async def test_three_consecutive_auth_failures_start_reauth_and_stop_polling(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Heavy, light, heavy auth failures: timers cancelled, reauth started, one WARNING."""
+    entry = _add_entry(hass)
+    client = MagicMock()
+    client.async_get_server_info = AsyncMock(side_effect=_auth_error())
+    client.async_get_camera_status = AsyncMock(side_effect=_auth_error())
+    coordinator = _make_coordinator(hass, entry, make_server_info(), client)
+    unsubs = await _start_with_mock_timers(coordinator)
+
+    with (
+        patch.object(entry, "async_start_reauth") as start_reauth,
+        caplog.at_level("WARNING"),
+    ):
+        await _reconcile_now(coordinator)
+        await _poll_light_status_now(coordinator)
+        start_reauth.assert_not_called()
+        for unsub in unsubs:
+            unsub.assert_not_called()
+        await _reconcile_now(coordinator)
+
+    start_reauth.assert_called_once_with(hass)
+    for unsub in unsubs:
+        unsub.assert_called_once()
+    warnings = [record for record in caplog.records if record.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "hunter2" not in warnings[0].getMessage()
+
+
+async def test_threshold_really_opens_a_reauth_flow(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """Unpatched, reaching the threshold leaves a reauth flow in progress for the entry."""
+    entry = _add_entry(hass)
+    coordinator = _make_coordinator(hass, entry, make_server_info(), mock_client)
+    await _start_with_mock_timers(coordinator)
+
+    for _ in range(3):
+        coordinator.record_auth_failure()
+    await hass.async_block_till_done()
+
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert len(flows) == 1
+    assert flows[0]["context"]["source"] == "reauth"
+    assert flows[0]["context"]["entry_id"] == entry.entry_id
+
+
+async def test_stream_hook_counts_with_the_polls(hass: HomeAssistant) -> None:
+    """Two poll failures plus one stream-reported failure reach the threshold."""
+    entry = _add_entry(hass)
+    client = MagicMock()
+    client.async_get_server_info = AsyncMock(side_effect=_auth_error())
+    client.async_get_camera_status = AsyncMock(side_effect=_auth_error())
+    coordinator = _make_coordinator(hass, entry, make_server_info(), client)
+    await _start_with_mock_timers(coordinator)
+
+    with patch.object(entry, "async_start_reauth") as start_reauth:
+        await _reconcile_now(coordinator)
+        await _poll_light_status_now(coordinator)
+        coordinator.record_auth_failure()
+
+    start_reauth.assert_called_once_with(hass)
+
+
+@pytest.mark.parametrize("successful_poll", ["heavy", "light"])
+async def test_a_successful_poll_resets_the_counter(
+    hass: HomeAssistant, successful_poll: str
+) -> None:
+    """Two failures then a success: back to zero, and two more failures still do nothing."""
+    entry = _add_entry(hass)
+    server = make_server_info()
+    client = MagicMock()
+    client.async_get_server_info = AsyncMock(side_effect=_auth_error())
+    client.async_get_camera_status = AsyncMock(side_effect=_auth_error())
+    coordinator = _make_coordinator(hass, entry, server, client)
+    unsubs = await _start_with_mock_timers(coordinator)
+
+    with patch.object(entry, "async_start_reauth") as start_reauth:
+        await _reconcile_now(coordinator)
+        await _poll_light_status_now(coordinator)
+        if successful_poll == "heavy":
+            client.async_get_server_info = AsyncMock(return_value=server)
+            await _reconcile_now(coordinator)
+        else:
+            client.async_get_camera_status = AsyncMock(return_value=())
+            await _poll_light_status_now(coordinator)
+        assert coordinator.auth_failures == 0
+
+        coordinator.record_auth_failure()
+        coordinator.record_auth_failure()
+
+    start_reauth.assert_not_called()
+    for unsub in unsubs:
+        unsub.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "side_effect",
+    [
+        SecuritySpyPermissionError("unknown"),
+        SecuritySpyConnectError("192.168.1.20", 8000, "timeout"),
+    ],
+)
+async def test_non_auth_failures_neither_count_nor_reset(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture, side_effect: Exception
+) -> None:
+    """Permission denials and connect errors leave the counter exactly where it was."""
+    entry = _add_entry(hass)
+    client = MagicMock()
+    client.async_get_server_info = AsyncMock(side_effect=side_effect)
+    client.async_get_camera_status = AsyncMock(side_effect=side_effect)
+    coordinator = _make_coordinator(hass, entry, make_server_info(), client)
+    await _start_with_mock_timers(coordinator)
+    coordinator.record_auth_failure()
+
+    with patch.object(entry, "async_start_reauth") as start_reauth, caplog.at_level("DEBUG"):
+        for _ in range(3):
+            await _reconcile_now(coordinator)
+            await _poll_light_status_now(coordinator)
+
+    assert coordinator.auth_failures == 1
+    start_reauth.assert_not_called()
+    own = [r for r in caplog.records if r.name == "custom_components.securityspy"]
+    assert any(record.levelname == "DEBUG" for record in own)
+    assert not any(record.levelname == "WARNING" for record in own)
+
+
+async def test_failures_beyond_the_threshold_do_not_start_reauth_again(
+    hass: HomeAssistant,
+) -> None:
+    """A fourth failure -- e.g. a poll already in flight -- starts no second reauth."""
+    entry = _add_entry(hass)
+    coordinator = _make_coordinator(hass, entry, make_server_info())
+    unsubs = await _start_with_mock_timers(coordinator)
+
+    with patch.object(entry, "async_start_reauth") as start_reauth:
+        for _ in range(5):
+            coordinator.record_auth_failure()
+
+    start_reauth.assert_called_once_with(hass)
+    for unsub in unsubs:
+        unsub.assert_called_once()
+
+
+async def test_a_late_success_after_the_threshold_does_not_rearm_reauth(
+    hass: HomeAssistant,
+) -> None:
+    """A poll that succeeds after reauth started cannot reset the count for a second run."""
+    entry = _add_entry(hass)
+    coordinator = _make_coordinator(hass, entry, make_server_info())
+    await _start_with_mock_timers(coordinator)
+
+    with patch.object(entry, "async_start_reauth") as start_reauth:
+        for _ in range(3):
+            coordinator.record_auth_failure()
+        coordinator.record_auth_success()
+        for _ in range(3):
+            coordinator.record_auth_failure()
+
+    start_reauth.assert_called_once_with(hass)
+    assert coordinator.auth_failures == AUTH_FAILURE_THRESHOLD
+
+
+async def test_unload_after_the_threshold_does_not_cancel_the_timers_twice(
+    hass: HomeAssistant,
+) -> None:
+    """Timers stopped early by the threshold are not cancelled again on unload."""
+    entry = _add_entry(hass)
+    coordinator = _make_coordinator(hass, entry, make_server_info())
+    unsubs = await _start_with_mock_timers(coordinator)
+    with patch.object(entry, "async_start_reauth"):
+        for _ in range(3):
+            coordinator.record_auth_failure()
+
+    entry.mock_state(hass, ConfigEntryState.LOADED)
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    for unsub in unsubs:
+        unsub.assert_called_once()

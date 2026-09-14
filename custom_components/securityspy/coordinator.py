@@ -16,6 +16,11 @@ on `RECONCILE_INTERVAL` for everything the light endpoint cannot provide.
 `SecuritySpyData` wraps both results so entities (the first arrive in this
 story) can read either without the coordinator's generic type having to be a
 bare `ServerInfo`.
+
+Story 2.8 adds AD-18's consecutive-auth-failure counter. Both polls feed it,
+and so will Epic 3's stream through the public `record_auth_failure` /
+`record_auth_success` hooks. On the `AUTH_FAILURE_THRESHOLD`-th consecutive
+failure the coordinator stops both timers and starts reauth.
 """
 
 from __future__ import annotations
@@ -25,16 +30,17 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
-from aiosecurityspy import SecuritySpyError
+from aiosecurityspy import SecuritySpyAuthError, SecuritySpyError
+from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import DOMAIN, LIGHT_POLL_INTERVAL, RECONCILE_INTERVAL
+from .const import AUTH_FAILURE_THRESHOLD, DOMAIN, LIGHT_POLL_INTERVAL, RECONCILE_INTERVAL
 from .entity import camera_device_info, hub_device_info
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from datetime import datetime
 
     from aiosecurityspy import CameraStatus, SecuritySpyClient, ServerInfo
@@ -121,6 +127,14 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
             camera_statuses=MappingProxyType({}),
             camera_permissions=_camera_permissions(server),
         )
+        #: Consecutive `SecuritySpyAuthError`s across every plane (AD-18).
+        #: Starts at zero on every setup, so a reload after reauth begins clean.
+        self.auth_failures = 0
+        #: The two timers' cancel callbacks, kept so reaching the threshold can
+        #: stop polling without waiting for an unload.
+        self._timer_unsubs: list[Callable[[], None]] = []
+        #: Latched when the threshold starts reauth; freezes the counter.
+        self._reauth_started = False
 
     async def async_start(self) -> None:
         """Register devices from the already-seeded data, then start polling.
@@ -134,20 +148,71 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         the periodic timers re-fetch.
         """
         self._sync_device_registry(self.data.server)
-        self.config_entry.async_on_unload(
-            async_track_time_interval(self.hass, self._async_reconcile, RECONCILE_INTERVAL)
+        self._timer_unsubs = [
+            async_track_time_interval(self.hass, self._async_reconcile, RECONCILE_INTERVAL),
+            async_track_time_interval(
+                self.hass, self._async_poll_light_status, LIGHT_POLL_INTERVAL
+            ),
+        ]
+        # One idempotent cancel registered for unload, rather than the raw
+        # unsubs: the threshold may already have cancelled the timers, and
+        # calling a timer's unsub twice is not safe.
+        self.config_entry.async_on_unload(self._cancel_timers)
+
+    @callback
+    def _cancel_timers(self) -> None:
+        """Stop both poll timers; safe to call any number of times."""
+        unsubs, self._timer_unsubs = self._timer_unsubs, []
+        for unsub in unsubs:
+            unsub()
+
+    @callback
+    def record_auth_failure(self) -> None:
+        """Count one rejected credential, starting reauth at the threshold.
+
+        Public so Epic 3's event stream can report its own auth failures into
+        the same counter the polls use (AD-18). Only the call that *reaches*
+        the threshold acts: later calls -- a poll already in flight when the
+        timers stopped, or the stream -- do not start a second reauth.
+        """
+        if self._reauth_started:
+            return
+        self.auth_failures += 1
+        if self.auth_failures < AUTH_FAILURE_THRESHOLD:
+            return
+        self._reauth_started = True
+        # Stop polling first: a dead password retried every 30 seconds could
+        # also trip an account lockout on the server.
+        self._cancel_timers()
+        LOGGER.warning(
+            "SecuritySpy rejected the stored credentials %d times in a row; "
+            "polling stopped until they are entered again",
+            AUTH_FAILURE_THRESHOLD,
         )
-        self.config_entry.async_on_unload(
-            async_track_time_interval(self.hass, self._async_poll_light_status, LIGHT_POLL_INTERVAL)
-        )
+        # What `ConfigEntryAuthFailed` does internally; a timer callback cannot
+        # raise that, so the flow is started directly.
+        self.config_entry.async_start_reauth(self.hass)
+
+    @callback
+    def record_auth_success(self) -> None:
+        """Reset the counter after any request the server authenticated.
+
+        Ignored once reauth has started: a poll already in flight when the
+        timers stopped must not re-arm the counter, or a later failure run
+        would start a second reauth. Only the reload that finishes reauth
+        builds a fresh coordinator with a fresh count.
+        """
+        if self._reauth_started:
+            return
+        self.auth_failures = 0
 
     async def _async_reconcile(self, _now: datetime | None = None) -> None:
         """Re-fetch the server and reconcile the device registry from it.
 
         On failure, the registry is left untouched and the failure is logged
-        once at `DEBUG` -- this story does not escalate a poll failure (auth
-        counting and reauth are story 2.8's job); the next scheduled attempt
-        simply retries.
+        once at `DEBUG`; the next scheduled attempt simply retries. A
+        `SecuritySpyAuthError` additionally counts towards reauth, and a
+        successful fetch resets that count.
 
         Args:
             _now: The time the timer fired, per `async_track_time_interval`'s
@@ -158,14 +223,16 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         try:
             server = await self.client.async_get_server_info()
         except SecuritySpyError as err:
-            # SecuritySpyConnectError, SecuritySpyAuthError and
-            # SecuritySpyUnsupportedVersionError are all subclasses of this and
-            # every branch takes the same action here -- this story does not
-            # escalate any of them (auth counting and reauth are story 2.8's
-            # job); the next scheduled attempt simply retries.
+            # Every library error is logged the same way and retried on the
+            # next tick. Only an auth rejection also counts: a permission
+            # denial means the password *worked*, and a connect error says
+            # nothing about the password at all.
             LOGGER.debug("Periodic reconciliation failed: %s", err)
+            if isinstance(err, SecuritySpyAuthError):
+                self.record_auth_failure()
             return
 
+        self.record_auth_success()
         try:
             # Sync before publishing: a listener must never observe
             # `self.data` ahead of the device registry it describes.
@@ -195,7 +262,8 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
 
         On failure, `self.data` is left untouched and the failure is logged
         once at `DEBUG`, exactly mirroring `_async_reconcile`'s own failure
-        handling -- the next scheduled attempt simply retries.
+        handling -- the next scheduled attempt simply retries, and an auth
+        rejection counts towards reauth in the same shared counter.
 
         Args:
             _now: The time the timer fired, per `async_track_time_interval`'s
@@ -207,6 +275,8 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
             statuses = await self.client.async_get_camera_status()
         except SecuritySpyError as err:
             LOGGER.debug("Periodic light status poll failed: %s", err)
+            if isinstance(err, SecuritySpyAuthError):
+                self.record_auth_failure()
             return
         except Exception:
             # Mirrors `_async_reconcile`'s own guard: an unexpected failure
@@ -215,6 +285,7 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
             LOGGER.exception("Unexpected error while polling light camera status")
             return
 
+        self.record_auth_success()
         # Filtered to the current inventory, same as `_pruned_statuses` does
         # for a heavy refresh -- otherwise a status for a camera that has
         # already left `server.cameras` would linger here until the next
