@@ -322,15 +322,15 @@ wheels = [
 
 [[package]]
 name = "aiosecurityspy"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp", version = "3.13.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14.2'" },
     { name = "aiohttp", version = "3.14.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14.2'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/57/0b59699ed0a2dac2f44a73302cf05556e903c7349cc4299f24a444c8f7c3/aiosecurityspy-0.3.0.tar.gz", hash = "sha256:8a3fbcd7968628d708e2b8bed94c41f5b919740e089b483a3e12e7e9f797d742", size = 310865, upload-time = "2026-09-13T21:51:15.316Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/17/fbf0148f0601900f2ce811dd155dbfc68cc292aa14ab5381c1d59b694b41/aiosecurityspy-0.4.0.tar.gz", hash = "sha256:41cb2cb740e6df271ba9380b908eda3811ebff59eda33cf60ec9133226db5581", size = 313748, upload-time = "2026-09-14T02:54:42.357Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c5/9f/386d0fd219506c5ebd4f987b0d31dc6c043188e9112eb8736399f0111f0d/aiosecurityspy-0.3.0-py3-none-any.whl", hash = "sha256:8400ed3352603e74335f9df21e6858f5c7e727bd91856220e372bf83cd08590f", size = 137065, upload-time = "2026-09-13T21:51:13.889Z" },
+    { url = "https://files.pythonhosted.org/packages/62/61/986c35ae474c596f31be72750f72f2d49320eabfca0345e098a9ffe7998c/aiosecurityspy-0.4.0-py3-none-any.whl", hash = "sha256:14dff6377ae8c6a2d23387cbdd24ac10a07e09e8e4a925149a80b18ecfb39719", size = 138257, upload-time = "2026-09-14T02:54:41.158Z" },
 ]
 
 [[package]]
@@ -1494,7 +1494,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "aiosecurityspy", specifier = "==0.3.0" },
+    { name = "aiosecurityspy", specifier = "==0.4.0" },
     { name = "mypy", specifier = ">=1.11" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-cov", specifier = ">=5.0" },

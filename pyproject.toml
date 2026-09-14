@@ -24,7 +24,7 @@ dev = [
     # `aljopro/aiosecurityspy` repo (e.g. `0.2.1a1` -- pip/uv never resolve a
     # pre-release unless pinned exactly) and point this pin and `manifest.json`
     # at it temporarily; revert both once the real release ships.
-    "aiosecurityspy==0.3.0",
+    "aiosecurityspy==0.4.0",
     "mypy>=1.11",
     "pytest>=8.3",
     "pytest-cov>=5.0",
