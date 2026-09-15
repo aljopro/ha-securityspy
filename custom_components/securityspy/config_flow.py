@@ -339,6 +339,46 @@ class SecuritySpyConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change where the server is reached and update the entry in place.
+
+        Args:
+            user_input: The submitted connection details, or ``None`` on first
+                display.
+
+        Returns:
+            An abort once the entry is updated (``reconfigure_successful``) or
+            the details reach a different server (``wrong_server``), or the form
+            again with an error.
+
+        """
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            outcome = await self._async_probe(user_input)
+            if isinstance(outcome, str):
+                errors["base"] = outcome
+            else:
+                await self.async_set_unique_id(outcome.uuid)
+                # A new address that reaches another server must not repoint this
+                # entry and its devices, which are keyed on the original UUID.
+                self._abort_if_unique_id_mismatch(reason="wrong_server")
+                # The title stays as the user may have renamed it; the reload
+                # rebuilds the client from the new data.
+                return self.async_update_reload_and_abort(entry, data_updates=user_input)
+
+        # The stored password is never suggested, nor a rejected one (AD-13).
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_USER_DATA_SCHEMA,
+                _preserved_values(entry.data if user_input is None else user_input),
+            ),
+            errors=errors,
+        )
+
     async def _async_probe(self, user_input: Mapping[str, Any]) -> ServerInfo | str:
         """Reach the described server, returning its info or an error key.
 

@@ -577,3 +577,190 @@ async def test_reauth_rejects_an_unusable_account_before_any_call(
 
     assert result["errors"] == {"base": "invalid_host"}
     mock_client.async_get_server_info.assert_not_awaited()
+
+
+#: What the user types into the reconfigure form: the same server, moved to HTTPS
+#: at a new address, with the account typed again.
+RECONFIGURE_INPUT: Final[dict[str, Any]] = {
+    CONF_HOST: "nvr.example.com",
+    CONF_PORT: 8001,
+    CONF_USERNAME: "homeassistant",
+    CONF_PASSWORD: "correct-horse",
+    CONF_SSL: True,
+    CONF_VERIFY_SSL: False,
+}
+
+
+async def _start_reconfigure_flow(hass: HomeAssistant, entry: MockConfigEntry) -> dict[str, Any]:
+    """Open the reconfigure step and assert the form is shown with no error."""
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"] == {}
+    return dict(result)
+
+
+async def test_reconfigure_form_prefills_everything_but_the_password(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """The full connection form is suggested from the entry, minus the password."""
+    entry = await _set_up_entry(hass)
+    mock_client.async_get_server_info.reset_mock()
+
+    result = await _start_reconfigure_flow(hass, entry)
+
+    assert {marker.schema for marker in result["data_schema"].schema} == {
+        str(marker) for marker in STEP_USER_DATA_SCHEMA.schema
+    }
+    assert _suggestions(result) == {
+        key: value for key, value in MOCK_USER_INPUT.items() if key != CONF_PASSWORD
+    }
+    mock_client.async_get_server_info.assert_not_awaited()
+
+
+async def test_reconfigure_updates_the_entry_and_keeps_devices_and_entities(
+    hass: HomeAssistant,
+    mock_client_class: MagicMock,
+    device_registry: dr.DeviceRegistry,
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """New connection details update the same entry in place and reload it."""
+    entry = await _set_up_entry(hass)
+    title = entry.title
+    devices = {d.id for d in dr.async_entries_for_config_entry(device_registry, entry.entry_id)}
+    entities = {
+        e.entity_id for e in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    }
+    assert devices
+    result = await _start_reconfigure_flow(hass, entry)
+
+    result = dict(
+        await hass.config_entries.flow.async_configure(result["flow_id"], RECONFIGURE_INPUT)
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert dict(entry.data) == RECONFIGURE_INPUT
+    assert entry.title == title
+    assert hass.config_entries.async_entries(DOMAIN) == [entry]
+    assert entry.state is ConfigEntryState.LOADED
+    # The reload rebuilt the client from the new address.
+    setup_call = mock_client_class.call_args_list[-1]
+    assert setup_call.args[1:] == (RECONFIGURE_INPUT[CONF_HOST], RECONFIGURE_INPUT[CONF_PORT])
+    assert setup_call.kwargs["use_https"] is True
+    assert setup_call.kwargs["verify_ssl"] is False
+    assert {
+        d.id for d in dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    } == devices
+    assert {
+        e.entity_id for e in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    } == entities
+
+
+async def test_reconfigure_against_a_different_server_aborts(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """An address that reaches another server's UUID leaves the entry untouched."""
+    entry = await _set_up_entry(hass)
+    result = await _start_reconfigure_flow(hass, entry)
+    mock_client.async_get_server_info.return_value = make_server_info(uuid="another-server")
+
+    result = dict(
+        await hass.config_entries.flow.async_configure(result["flow_id"], RECONFIGURE_INPUT)
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "wrong_server"
+    assert dict(entry.data) == MOCK_USER_INPUT
+
+
+@pytest.mark.parametrize(
+    ("side_effect", "return_value", "expected_error"),
+    [
+        (SecuritySpyConnectError("nvr.example.com", 8001, "timeout"), None, "cannot_connect"),
+        (SecuritySpyAuthError("nvr.example.com", 8001, 401), None, "invalid_auth"),
+        (SecuritySpyPermissionError("unknown"), None, "permission_denied"),
+        (SecuritySpyUnsupportedVersionError("5.4", "6.0"), None, "unsupported_version"),
+        (
+            SecuritySpyCertificateError("nvr.example.com", 8001, "SSLCertVerificationError"),
+            None,
+            "invalid_certificate",
+        ),
+        (SecuritySpyError("something unforeseen"), None, "unknown"),
+        (TimeoutError("no response"), None, "unknown"),
+        (None, make_server_info(uuid=""), "no_server_uuid"),
+    ],
+)
+async def test_reconfigure_failures_redisplay_the_form_without_the_password(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    side_effect: Exception | None,
+    return_value: object,
+    expected_error: str,
+) -> None:
+    """Every probe failure keeps the flow, shows its key and echoes no password."""
+    entry = await _set_up_entry(hass)
+    result = await _start_reconfigure_flow(hass, entry)
+    mock_client.async_get_server_info.side_effect = side_effect
+    if return_value is not None:
+        mock_client.async_get_server_info.return_value = return_value
+
+    result = dict(
+        await hass.config_entries.flow.async_configure(result["flow_id"], RECONFIGURE_INPUT)
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"] == {"base": expected_error}
+    # The submitted values come back as typed; the password does not come back.
+    assert _suggestions(result) == {
+        key: value for key, value in RECONFIGURE_INPUT.items() if key != CONF_PASSWORD
+    }
+    assert dict(entry.data) == MOCK_USER_INPUT
+
+
+async def test_reconfigure_rejects_an_unusable_host_before_any_call(
+    hass: HomeAssistant, mock_client_class: MagicMock, mock_client: MagicMock
+) -> None:
+    """A host the client constructor refuses maps to `invalid_host`."""
+    entry = await _set_up_entry(hass)
+    result = await _start_reconfigure_flow(hass, entry)
+    mock_client.async_get_server_info.reset_mock()
+    mock_client_class.side_effect = ValueError("host must be a bare hostname or IP address")
+
+    result = dict(
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**RECONFIGURE_INPUT, CONF_HOST: "https://nvr.example.com/x"}
+        )
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_host"}
+    mock_client.async_get_server_info.assert_not_awaited()
+    assert dict(entry.data) == MOCK_USER_INPUT
+
+
+async def test_reconfigure_recovers_after_an_error(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """A corrected resubmission after a failure still updates the entry."""
+    entry = await _set_up_entry(hass)
+    result = await _start_reconfigure_flow(hass, entry)
+    mock_client.async_get_server_info.side_effect = SecuritySpyConnectError(
+        "nvr.example.com", 8001, "timeout"
+    )
+    result = dict(
+        await hass.config_entries.flow.async_configure(result["flow_id"], RECONFIGURE_INPUT)
+    )
+    assert result["errors"] == {"base": "cannot_connect"}
+
+    mock_client.async_get_server_info.side_effect = None
+    result = dict(
+        await hass.config_entries.flow.async_configure(result["flow_id"], RECONFIGURE_INPUT)
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert dict(entry.data) == RECONFIGURE_INPUT

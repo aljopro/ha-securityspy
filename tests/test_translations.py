@@ -87,6 +87,14 @@ def test_every_form_field_is_labelled_and_described() -> None:
     assert set(user_step["data_description"]) == fields
 
 
+def test_every_reconfigure_field_is_labelled_and_described() -> None:
+    """The reconfigure step reuses the user schema, so it labels the same fields."""
+    fields = {str(marker) for marker in config_flow.STEP_USER_DATA_SCHEMA.schema}
+    reconfigure_step = _load(STRINGS)["config"]["step"]["reconfigure"]
+    assert set(reconfigure_step["data"]) == fields
+    assert set(reconfigure_step["data_description"]) == fields
+
+
 def test_every_option_is_labelled_and_described() -> None:
     """The options step labels and explains every option it collects."""
     fields = {str(marker) for marker in config_flow.OPTIONS_SCHEMA.schema}

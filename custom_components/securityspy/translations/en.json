@@ -32,6 +32,26 @@
           "username": "A SecuritySpy web server account. Home Assistant only creates the entities this account is permitted to use.",
           "password": "The password for that SecuritySpy account."
         }
+      },
+      "reconfigure": {
+        "title": "Change SecuritySpy connection details",
+        "description": "Update the address, port or HTTPS settings for this SecuritySpy server. Its devices, entities and history are kept. Enter the password again; a changed account is saved too.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password",
+          "ssl": "Connect over HTTPS",
+          "verify_ssl": "Verify the certificate"
+        },
+        "data_description": {
+          "host": "The hostname or IP address of the Mac running SecuritySpy, on its own - no http://, no port and no path.",
+          "port": "SecuritySpy's web server port. Find it in SecuritySpy under Preferences > Web Server. It is usually 8000 for HTTP and 8001 for HTTPS.",
+          "username": "A SecuritySpy web server account. Home Assistant only creates the entities this account is permitted to use.",
+          "password": "The password for that SecuritySpy account.",
+          "ssl": "Turn this on if SecuritySpy's web server uses HTTPS. Remember to enter its HTTPS port above.",
+          "verify_ssl": "Only used when \"Connect over HTTPS\" is on. It checks that the server's certificate is valid and was issued for the address you entered. Turning it off means nothing proves the server is the one you think it is, and your password is sent to whatever answers that address, so only do it on a network you trust."
+        }
       }
     },
     "error": {
@@ -47,6 +67,7 @@
     "abort": {
       "already_configured": "This SecuritySpy server is already set up in Home Assistant. Its unique ID matches an existing entry, so it has been reached at a different address.",
       "reauth_successful": "The account details were updated and SecuritySpy is connected again.",
+      "reconfigure_successful": "The connection details were updated and SecuritySpy has reconnected using them.",
       "wrong_server": "That account signed in to a different SecuritySpy server than the one this entry was set up for. Check that the saved address still points at the right Mac, or add the other server separately."
     }
   },
