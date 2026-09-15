@@ -79,7 +79,7 @@ development_status:
   2-6-live-video-without-exposing-credentials: done
   2-7-only-create-entities-the-user-is-permitted-to-use: done
   2-8-re-enter-credentials-when-they-stop-working: done
-  2-9-change-connection-details-without-losing-history: backlog
+  2-9-change-connection-details-without-losing-history: done
   epic-2-retrospective: optional
   epic-3: backlog
   3-1-report-unavailable-rather-than-stale: backlog
