@@ -13,6 +13,8 @@ through, so no credential-bearing URL ever leaves the library (AD-13).
 Story 2.7 adds the shared permission gate (``permissions.py``): platforms ask it
 before creating a permission-dependent entity, and setup turns its recorded
 denials into repair issues once every platform has been forwarded.
+Story 3.1 adds ``async_remove_config_entry_device``: reconciliation no longer
+removes devices, so a camera that leaves the inventory is deleted by the user.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ from aiosecurityspy import (
     SecuritySpyPermissionError,
     SecuritySpyUnsupportedVersionError,
 )
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -57,6 +59,7 @@ _LOGGER: Final = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from aiosecurityspy import RtspRelay, ServerInfo
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers import device_registry as dr
 
 #: Story 2.4 added the first platform: diagnostic sensors for hub and camera
 #: health. Story 2.5 adds a single hub-level update entity, and story 2.6 the
@@ -286,6 +289,43 @@ async def async_unload_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry)
     # Missing-permission issues are deliberately left in place: a reload
     # re-evaluates them, and only `async_remove_entry` deletes them.
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,  # noqa: ARG001 - required integration signature
+    entry: SecuritySpyConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow deleting a camera device only once its camera left the inventory.
+
+    Gold `stale-devices`: the coordinator never removes a device itself, so
+    the user can. The hub, and any camera still inventoried (online or not),
+    are refused -- the next reconciliation would recreate them anyway.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry the device belongs to.
+        device_entry: The device the user asked to delete.
+
+    Returns:
+        ``True`` only when the entry is loaded, the device is a camera device
+        of this server, and that camera is absent from the current inventory.
+
+    """
+    if entry.state is not ConfigEntryState.LOADED:
+        # Without a loaded coordinator there is no current inventory to check
+        # against, so nothing can be proven stale.
+        return False
+    coordinator = entry.runtime_data.coordinator
+    if not coordinator.last_update_success:
+        # During an outage the held inventory is stale: a camera missing from
+        # it may be back, so nothing can be proven stale until a poll succeeds.
+        return False
+    server = coordinator.data.server
+    camera_number = SecuritySpyDataUpdateCoordinator._camera_number_for(  # noqa: SLF001 - one identity parser, shared with the coordinator
+        device_entry, f"{server.uuid}_"
+    )
+    return camera_number is not None and camera_number not in server.cameras
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) -> None:

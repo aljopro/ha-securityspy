@@ -21,6 +21,15 @@ Story 2.8 adds AD-18's consecutive-auth-failure counter. Both polls feed it,
 and so will Epic 3's stream through the public `record_auth_failure` /
 `record_auth_success` hooks. On the `AUTH_FAILURE_THRESHOLD`-th consecutive
 failure the coordinator stops both timers and starts reauth.
+
+Story 3.1 makes a failed poll visible instead of silently keeping stale data:
+either poll failing flips `last_update_success` to False, so every entity goes
+unavailable until the next successful poll restores it through
+`async_set_updated_data`. It also adds the `stream_connected` flag the push
+availability layer reads (Story 3.2 wires the stream that sets it), and stops
+reconciliation from removing devices: a camera that leaves the inventory keeps
+its device, and history, until the user deletes it through
+`async_remove_config_entry_device`.
 """
 
 from __future__ import annotations
@@ -135,6 +144,12 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         self._timer_unsubs: list[Callable[[], None]] = []
         #: Latched when the threshold starts reauth; freezes the counter.
         self._reauth_started = False
+        #: Whether the Event Stream is currently connected -- the fourth
+        #: availability layer, read only by push-derived entities. False until
+        #: Story 3.2 wires the stream: no stream exists yet, so claiming it is
+        #: healthy would make a push-derived entity look live when nothing
+        #: could be feeding it.
+        self.stream_connected = False
 
     async def async_start(self) -> None:
         """Register devices from the already-seeded data, then start polling.
@@ -165,6 +180,36 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         unsubs, self._timer_unsubs = self._timer_unsubs, []
         for unsub in unsubs:
             unsub()
+
+    @callback
+    def async_set_stream_connected(self, connected: bool) -> None:  # noqa: FBT001 - mirrors the stream's own connected/disconnected callbacks
+        """Record the Event Stream's health, notifying listeners on a change.
+
+        A repeated report of the same state is a no-op, so a stream that
+        reconnects without ever having dropped does not rewrite every entity.
+
+        Args:
+            connected: Whether the stream is connected now.
+
+        """
+        if connected == self.stream_connected:
+            return
+        self.stream_connected = connected
+        self.async_update_listeners()
+
+    @callback
+    def _async_mark_poll_failed(self) -> None:
+        """Mark the coordinator's last update as failed, once per outage.
+
+        Listeners are notified only on the True-to-False transition: a
+        second failing poll changes no entity's availability, so writing every
+        state again would be pure noise. The next successful poll restores
+        `last_update_success` through `async_set_updated_data`.
+        """
+        if not self.last_update_success:
+            return
+        self.last_update_success = False
+        self.async_update_listeners()
 
     @callback
     def record_auth_failure(self) -> None:
@@ -209,8 +254,10 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
     async def _async_reconcile(self, _now: datetime | None = None) -> None:
         """Re-fetch the server and reconcile the device registry from it.
 
-        On failure, the registry is left untouched and the failure is logged
-        once at `DEBUG`; the next scheduled attempt simply retries. A
+        On failure, the registry and `self.data` are left untouched, the
+        failure is logged once at `DEBUG`, and `last_update_success` goes
+        False so entities report unavailable rather than stale; the next
+        scheduled attempt simply retries. A
         `SecuritySpyAuthError` additionally counts towards reauth, and a
         successful fetch resets that count.
 
@@ -230,6 +277,14 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
             LOGGER.debug("Periodic reconciliation failed: %s", err)
             if isinstance(err, SecuritySpyAuthError):
                 self.record_auth_failure()
+            self._async_mark_poll_failed()
+            return
+        except Exception:
+            # Same guard as the light poll: an unexpected failure must not kill
+            # this periodic callback, and the server did not answer usefully,
+            # so entities go unavailable exactly as for a library error.
+            LOGGER.exception("Unexpected error while reconciling the server")
+            self._async_mark_poll_failed()
             return
 
         self.record_auth_success()
@@ -241,7 +296,8 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
             # An unexpected failure writing to the device registry -- not one
             # of this story's typed library errors -- must not kill this
             # periodic callback for every future cycle; log loudly and let the
-            # next scheduled attempt retry, same as a poll failure above.
+            # next scheduled attempt retry. Availability is not touched: the
+            # server did answer, so its entities are not stale.
             LOGGER.exception("Unexpected error while reconciling the device registry")
             return
 
@@ -260,10 +316,11 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
     async def _async_poll_light_status(self, _now: datetime | None = None) -> None:
         """Re-fetch per-camera health from the cheap ``++camStatus`` endpoint.
 
-        On failure, `self.data` is left untouched and the failure is logged
-        once at `DEBUG`, exactly mirroring `_async_reconcile`'s own failure
-        handling -- the next scheduled attempt simply retries, and an auth
-        rejection counts towards reauth in the same shared counter.
+        On failure, `self.data` is left untouched, the failure is logged once
+        at `DEBUG` and `last_update_success` goes False, exactly mirroring
+        `_async_reconcile`'s own failure handling -- the next scheduled attempt
+        simply retries, and an auth rejection counts towards reauth in the same
+        shared counter.
 
         Args:
             _now: The time the timer fired, per `async_track_time_interval`'s
@@ -277,12 +334,14 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
             LOGGER.debug("Periodic light status poll failed: %s", err)
             if isinstance(err, SecuritySpyAuthError):
                 self.record_auth_failure()
+            self._async_mark_poll_failed()
             return
         except Exception:
             # Mirrors `_async_reconcile`'s own guard: an unexpected failure
             # here must not kill this periodic callback for every future
             # cycle; log loudly and let the next scheduled attempt retry.
             LOGGER.exception("Unexpected error while polling light camera status")
+            self._async_mark_poll_failed()
             return
 
         self.record_auth_success()
@@ -321,14 +380,16 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         )
 
     def _sync_device_registry(self, server: ServerInfo) -> None:
-        """Create/update the hub and every camera device, then drop stale ones.
+        """Create or update the hub and every inventoried camera device.
 
-        Diffs `server.cameras` against the registry's own current devices for
-        this config entry -- not against `self.data.server.cameras` -- so a
-        device deleted out-of-band (e.g. by hand in the HA UI) is
-        self-healingly recreated on the next reconciliation rather than
-        staying missing forever, and a camera genuinely removed from the
-        inventory is the only thing that gets its device removed.
+        `async_get_or_create` runs for every camera on every pass, so a device
+        deleted out-of-band (e.g. by hand in the HA UI) while its camera is
+        still inventoried is self-healingly recreated on the next
+        reconciliation rather than staying missing forever. Devices are never
+        removed here: a camera that leaves the inventory may be disabled,
+        de-permissioned or deleted, which this integration cannot tell apart,
+        so its device and history stay until the user removes it
+        (`async_remove_config_entry_device`); its entities report unavailable.
 
         Args:
             server: The server state to register devices from.
@@ -337,23 +398,12 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         registry = dr.async_get(self.hass)
         entry_id = self.config_entry.entry_id
 
-        hub_entry = registry.async_get_or_create(
-            config_entry_id=entry_id, **hub_device_info(server)
-        )
+        registry.async_get_or_create(config_entry_id=entry_id, **hub_device_info(server))
 
         for camera in server.cameras.values():
             registry.async_get_or_create(
                 config_entry_id=entry_id, **camera_device_info(server, camera)
             )
-
-        known_numbers = set(server.cameras)
-        prefix = f"{server.uuid}_"
-        for device in dr.async_entries_for_config_entry(registry, entry_id):
-            if device.id == hub_entry.id:
-                continue
-            camera_number = self._camera_number_for(device, prefix)
-            if camera_number is None or camera_number not in known_numbers:
-                registry.async_remove_device(device.id)
 
     @staticmethod
     def _camera_number_for(device: dr.DeviceEntry, prefix: str) -> int | None:
@@ -366,9 +416,7 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         Returns:
             The camera number, or `None` when no identifier of this device
             matches the expected `(DOMAIN, "{uuid}_{number}")` shape -- under
-            the sole-writer invariant this only happens for the hub device
-            itself (already excluded by the caller), never for a malformed
-            camera device.
+            the sole-writer invariant, normally only the hub device.
 
         """
         for domain, identifier in device.identifiers:

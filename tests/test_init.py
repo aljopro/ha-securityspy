@@ -21,9 +21,11 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_SSL, CONF_VERIFY_
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
+from custom_components.securityspy import async_remove_config_entry_device
 from custom_components.securityspy.const import (
     CONF_CREATE_CAMERA_ENTITIES,
     DOMAIN,
+    LIGHT_POLL_INTERVAL,
     RECONCILE_INTERVAL,
 )
 from custom_components.securityspy.coordinator import SecuritySpyDataUpdateCoordinator
@@ -35,12 +37,14 @@ from .conftest import (
     SERVER_UUID,
     https_input,
     make_camera,
+    make_camera_status,
     make_server_info,
     make_server_info_with_cameras,
 )
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers import device_registry as dr
     from homeassistant.helpers import issue_registry as ir
 
 
@@ -522,3 +526,54 @@ async def test_missing_permission_issues_are_scoped_per_entry(
     await hass.config_entries.async_remove(entry_a.entry_id)
     await hass.async_block_till_done()
     assert issue_registry.async_get_issue(DOMAIN, issue_a) is None
+
+
+async def test_remove_config_entry_device_only_allows_cameras_absent_from_the_inventory(
+    hass: HomeAssistant, mock_client: MagicMock, device_registry: dr.DeviceRegistry
+) -> None:
+    """True for a camera that left the inventory; False for the hub and a present camera."""
+    mock_client.async_get_server_info.return_value = make_server_info_with_cameras()
+    # Camera 1 offline: present-but-offline must still be refused.
+    mock_client.async_get_camera_status.return_value = (make_camera_status(1, online=False),)
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    hub = device_registry.async_get_device(identifiers={(DOMAIN, SERVER_UUID)})
+    camera_1 = device_registry.async_get_device(identifiers={(DOMAIN, f"{SERVER_UUID}_1")})
+    camera_2 = device_registry.async_get_device(identifiers={(DOMAIN, f"{SERVER_UUID}_2")})
+    assert hub is not None
+    assert camera_1 is not None
+    assert camera_2 is not None
+    assert not await async_remove_config_entry_device(hass, entry, camera_2)
+
+    mock_client.async_get_server_info.return_value = make_server_info_with_cameras(
+        cameras=(make_camera(1, "Driveway"),)
+    )
+    async_fire_time_changed(hass, dt_util.utcnow() + RECONCILE_INTERVAL)
+    await hass.async_block_till_done()
+
+    assert await async_remove_config_entry_device(hass, entry, camera_2)
+    assert not await async_remove_config_entry_device(hass, entry, camera_1)
+    assert not await async_remove_config_entry_device(hass, entry, hub)
+
+    # During an outage the held inventory is stale, so nothing is removable.
+    mock_client.async_get_camera_status.side_effect = SecuritySpyConnectError(
+        "192.168.1.20", 8000, "timeout"
+    )
+    async_fire_time_changed(hass, dt_util.utcnow() + LIGHT_POLL_INTERVAL)
+    await hass.async_block_till_done()
+    assert not await async_remove_config_entry_device(hass, entry, camera_2)
+
+
+async def test_remove_config_entry_device_refuses_while_the_entry_is_not_loaded(
+    hass: HomeAssistant, mock_client: MagicMock, device_registry: dr.DeviceRegistry
+) -> None:
+    """With no loaded coordinator there is no inventory to prove a device stale."""
+    mock_client.async_get_server_info.return_value = make_server_info_with_cameras()
+    entry = _add_entry(hass)
+    device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, f"{SERVER_UUID}_9")}
+    )
+
+    assert entry.state is ConfigEntryState.NOT_LOADED
+    assert not await async_remove_config_entry_device(hass, entry, device)

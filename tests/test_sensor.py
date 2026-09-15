@@ -179,7 +179,11 @@ async def test_light_poll_updates_last_error_without_touching_heavy_fields(
 async def test_light_poll_transient_failure_leaves_last_error_untouched(
     hass: HomeAssistant, mock_client: MagicMock, entity_registry: er.EntityRegistry
 ) -> None:
-    """A transient light-poll failure does not clear or change `last_error`."""
+    """A transient light-poll failure keeps `last_error`, but reads unavailable (story 3.1).
+
+    The stored value survives so recovery shows it again; the entity itself
+    reports unavailable rather than a stale value while the server is down.
+    """
     server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
     mock_client.async_get_server_info.return_value = server
     entry = _add_entry(hass)
@@ -201,7 +205,8 @@ async def test_light_poll_transient_failure_leaves_last_error_untouched(
     assert last_error_id is not None
     state = hass.states.get(last_error_id)
     assert state is not None
-    assert state.state == "e/network"
+    assert state.state == "unavailable"
+    assert entry.runtime_data.coordinator.data.camera_statuses[1].error == "e/network"
 
 
 async def test_zero_cameras_creates_only_hub_sensors(

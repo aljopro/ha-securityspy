@@ -196,10 +196,10 @@ async def test_reconcile_adds_a_new_camera_device(
     assert len(_camera_devices(device_registry, entry)) == len(grown.cameras)
 
 
-async def test_reconcile_removes_a_camera_device(
+async def test_reconcile_keeps_the_device_of_a_camera_that_left_the_inventory(
     hass: HomeAssistant, device_registry: dr.DeviceRegistry
 ) -> None:
-    """A camera no longer in the inventory has its device removed; others survive."""
+    """A camera no longer inventoried keeps its device; only the user deletes it."""
     entry = _add_entry(hass)
     initial = make_server_info_with_cameras(
         cameras=(make_camera(1, "Driveway"), make_camera(2, "Front Door"))
@@ -207,17 +207,14 @@ async def test_reconcile_removes_a_camera_device(
     client = MagicMock()
     coordinator = _make_coordinator(hass, entry, initial, client)
     await _start_without_a_real_timer(coordinator)
-    hub = device_registry.async_get_device(identifiers={(DOMAIN, SERVER_UUID)})
-    assert hub is not None
 
     shrunk = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
     client.async_get_server_info = AsyncMock(return_value=shrunk)
     await _reconcile_now(coordinator)
 
-    assert device_registry.async_get_device(identifiers={(DOMAIN, f"{SERVER_UUID}_2")}) is None
-    assert device_registry.async_get_device(identifiers={(DOMAIN, f"{SERVER_UUID}_1")}) is not None
-    assert device_registry.async_get_device(identifiers={(DOMAIN, SERVER_UUID)}) is not None
-    assert hub.id == device_registry.async_get_device(identifiers={(DOMAIN, SERVER_UUID)}).id  # type: ignore[union-attr]
+    assert coordinator.data.server is shrunk
+    for identifier in (SERVER_UUID, f"{SERVER_UUID}_1", f"{SERVER_UUID}_2"):
+        assert device_registry.async_get_device(identifiers={(DOMAIN, identifier)}) is not None
 
 
 async def test_reconcile_self_heals_a_manually_deleted_camera_device(
@@ -242,40 +239,27 @@ async def test_reconcile_self_heals_a_manually_deleted_camera_device(
     assert device_registry.async_get_device(identifiers={(DOMAIN, f"{SERVER_UUID}_1")}) is not None
 
 
-async def test_reconcile_removes_a_device_with_no_recognisable_camera_identifier(
+async def test_reconcile_keeps_a_device_with_no_recognisable_camera_identifier(
     hass: HomeAssistant, device_registry: dr.DeviceRegistry
 ) -> None:
-    """A device under this entry with no matching camera identifier is treated as stale.
-
-    Unreachable under the sole-writer invariant in real operation (only the
-    coordinator ever registers a device for this config entry), but the diff
-    must still resolve *some* way if it were ever violated; removing rather
-    than crashing the whole reconciliation is that answer.
-    """
+    """Reconciliation never removes a device, even one it cannot map to a camera."""
     entry = _add_entry(hass)
     server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
-    coordinator = _make_coordinator(hass, entry, server)
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, server, client)
     await _start_without_a_real_timer(coordinator)
     device_registry.async_get_or_create(
         config_entry_id=entry.entry_id, identifiers={(DOMAIN, "not-a-camera-identifier")}
     )
-    # Also cover a domain-matching, prefix-matching identifier whose suffix is
-    # not purely numeric -- a different way the "no recognisable camera
-    # number" branch can be reached.
     device_registry.async_get_or_create(
         config_entry_id=entry.entry_id, identifiers={(DOMAIN, f"{SERVER_UUID}_abc")}
     )
 
-    client = MagicMock()
     client.async_get_server_info = AsyncMock(return_value=server)
-    coordinator.client = client
     await _reconcile_now(coordinator)
 
-    assert (
-        device_registry.async_get_device(identifiers={(DOMAIN, "not-a-camera-identifier")}) is None
-    )
-    assert device_registry.async_get_device(identifiers={(DOMAIN, f"{SERVER_UUID}_abc")}) is None
-    assert device_registry.async_get_device(identifiers={(DOMAIN, f"{SERVER_UUID}_1")}) is not None
+    for identifier in ("not-a-camera-identifier", f"{SERVER_UUID}_abc", f"{SERVER_UUID}_1"):
+        assert device_registry.async_get_device(identifiers={(DOMAIN, identifier)}) is not None
 
 
 async def test_a_reload_against_the_same_identity_does_not_duplicate_devices(
@@ -794,3 +778,58 @@ async def test_unload_after_the_threshold_does_not_cancel_the_timers_twice(
 
     for unsub in unsubs:
         unsub.assert_called_once()
+
+
+async def test_stream_connected_starts_false_and_notifies_only_on_change(
+    hass: HomeAssistant,
+) -> None:
+    """`async_set_stream_connected` updates listeners on a change, never on a repeat."""
+    entry = _add_entry(hass)
+    coordinator = _make_coordinator(hass, entry, make_server_info())
+    listener = MagicMock()
+    unsub = coordinator.async_add_listener(listener)
+    assert bool(coordinator.stream_connected) is False
+
+    coordinator.async_set_stream_connected(False)  # noqa: FBT003 - the flag under test
+    listener.assert_not_called()
+
+    coordinator.async_set_stream_connected(True)  # noqa: FBT003 - the flag under test
+    assert bool(coordinator.stream_connected) is True
+    assert listener.call_count == 1
+
+    coordinator.async_set_stream_connected(True)  # noqa: FBT003 - the flag under test
+    assert listener.call_count == 1
+
+    coordinator.async_set_stream_connected(False)  # noqa: FBT003 - the flag under test
+    assert bool(coordinator.stream_connected) is False
+    assert listener.call_count == 2  # noqa: PLR2004 - one call per change
+    unsub()
+
+
+async def test_a_failed_poll_marks_the_update_failed_once_and_success_restores_it(
+    hass: HomeAssistant,
+) -> None:
+    """Only the first failure notifies listeners; the next success sets it True again."""
+    entry = _add_entry(hass)
+    server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, server, client)
+    await _start_without_a_real_timer(coordinator)
+    listener = MagicMock()
+    unsub = coordinator.async_add_listener(listener)
+
+    client.async_get_camera_status = AsyncMock(
+        side_effect=SecuritySpyConnectError("192.168.1.20", 8000, "timeout")
+    )
+    await _poll_light_status_now(coordinator)
+    assert bool(coordinator.last_update_success) is False
+    assert listener.call_count == 1
+
+    client.async_get_server_info = AsyncMock(side_effect=RuntimeError("boom"))
+    await _reconcile_now(coordinator)
+    assert listener.call_count == 1
+
+    client.async_get_camera_status = AsyncMock(return_value=())
+    await _poll_light_status_now(coordinator)
+    assert bool(coordinator.last_update_success) is True
+    unsub()
