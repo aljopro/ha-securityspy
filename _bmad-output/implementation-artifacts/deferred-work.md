@@ -328,3 +328,11 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-8-re-enter-credentials-when-they-stop-working.md`
   summary: `coordinator._async_reconcile` guards only `SecuritySpyError` around `async_get_server_info()`, unlike `_async_poll_light_status`, which also catches `Exception`; a non-library error escaping the fetch surfaces as an unhandled timer-task exception rather than the intended logged retry.
   evidence: Blind Hunter review of story 2.8's diff compared the two poll methods' except-clauses; the asymmetry predates story 2.8 (the heavy fetch's handler was untouched apart from auth counting).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-report-unavailable-rather-than-stale.md`
+  summary: A failing heavy `++systemInfo` reconcile is masked by the next successful light `++camStatus` poll, which restores `last_update_success`. Inventory, names and `Camera.connected` can then stay stale while entities show as available.
+  evidence: Blind Hunter and Edge Case Hunter both flagged it; the test `test_a_failed_poll_marks_the_update_failed_once_and_success_restores_it` shows a light success restoring availability after a reconcile failure. The server is reachable in that state, so it was triaged out of 3.1's "unreachable" scope. It fits 3.2's reconciliation work.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-report-unavailable-rather-than-stale.md`
+  summary: Reconcile no longer removes devices, and `async_remove_config_entry_device` allows only parseable current-UUID camera devices. A device with a malformed or foreign-UUID identifier under the entry can therefore never be removed.
+  evidence: Both reviewers flagged it. Today such devices can only arise from an out-of-band registry write, because reconfigure aborts on `wrong_server`. The intent contract limits removal to `{uuid}_{n}` devices.
