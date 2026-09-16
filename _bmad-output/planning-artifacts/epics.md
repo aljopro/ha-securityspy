@@ -826,6 +826,41 @@ So that a consumer such as Home Assistant can show a camera's still image withou
 **When** a live test fetches a still image for a visible camera
 **Then** it receives a decodable JPEG
 
+### Story 1.21: Spike — do SecuritySpy API keys replace credentials on every path the library uses?
+
+As a builder,
+I want to know exactly what a SecuritySpy 6.22 API key can and cannot authenticate,
+So that PRD Open Question 11 is decided on evidence rather than a forum reply. *(PRD Open Question 11; informs FR-22, FR-42)*
+
+**Acceptance Criteria:**
+
+**Given** a test server running SecuritySpy 6.22b9 or later and an API key created for a least-privileged account
+**When** the key is sent as `auth=API_…` to `++systemInfo`, `++image`, `++eventStream`, capture media, and the RTSP `stream` URL
+**Then** each path's result (accepted, refused, status code) is recorded, including whether a header form works in place of the query parameter
+**And** the same paths are tried with the key supplied as the password (HTTP `Authorization: Basic`, and RTSP authentication), with both the account's username and an empty or arbitrary username, since the settings screen says the key can be entered wherever software asks for a password
+
+**Given** the same key
+**When** it is used on a camera the account may not view and on an endpoint the account lacks permission for
+**Then** the result confirms whether the key carries exactly the account's permissions and the library's `401`-means-permission rule still holds
+
+**Given** keys are displayed with an `API_` prefix
+**When** several keys are generated and inspected
+**Then** the prefix, length and character set are recorded, so the library can tell a key from a password by shape (for choosing how to authenticate and for redacting keys in logs and diagnostics)
+**And** the write-up states what happens when an ordinary account password itself begins with `API_`, so detection by prefix never locks out such a user
+
+**Given** the settings screen shows one key per account, displayed only at creation, with regenerate and delete controls
+**When** the key is regenerated or deleted and the old key is used again
+**Then** the observed response is recorded, so the library can map it to its existing exception types
+
+**Given** the findings
+**When** they are written up in `research/` and the architecture memlog
+**Then** they state the SecuritySpy build tested and compare, against AD-13's egress threat model, the options for adding keys alongside the existing credential path — no change; relay authenticates upstream with a key when one is configured; that plus key-bearing URLs offered directly to consumers
+**And** every option keeps the relay and username/password authentication working for servers without API keys
+**And** they recommend one option, which is adopted only through a follow-up correct-course, not inside this story
+
+**Given** no 6.22 server can be obtained
+**When** the spike cannot run
+**Then** Open Question 11 stays open and the relay remains the design, with no further decision needed
 
 ## Epic 2: Connect and Model
 
