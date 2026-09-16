@@ -34,6 +34,7 @@ from custom_components.securityspy.const import (
 from custom_components.securityspy.coordinator import SecuritySpyDataUpdateCoordinator
 
 from .conftest import (
+    SERVER_NAME,
     SERVER_UUID,
     make_camera,
     make_camera_status,
@@ -851,6 +852,90 @@ async def test_stream_reconnected_handler_sets_the_flag_and_refreshes_both_polls
     assert bool(coordinator.stream_connected) is True
     client.async_get_server_info.assert_awaited_once()
     client.async_get_camera_status.assert_awaited_once()
+
+
+async def test_stream_first_connect_logs_nothing(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The very first connect has no prior loss to recover from, so it stays silent."""
+    entry = _add_entry(hass)
+    coordinator = _make_coordinator(hass, entry, make_server_info())
+
+    with caplog.at_level("DEBUG"):
+        coordinator.async_handle_stream_connected()
+
+    own = [r for r in caplog.records if r.name == "custom_components.securityspy"]
+    assert own == []
+
+
+async def test_stream_disconnect_logs_exactly_one_error_naming_the_server(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A lost connection logs one ERROR naming the server, and no more on repeats."""
+    entry = _add_entry(hass)
+    coordinator = _make_coordinator(hass, entry, make_server_info())
+    coordinator.async_set_stream_connected(True)  # noqa: FBT003 - the flag under test
+
+    with caplog.at_level("DEBUG"):
+        coordinator.async_handle_stream_disconnected()
+        coordinator.async_handle_stream_disconnected()
+        coordinator.async_handle_stream_disconnected()
+
+    own = [r for r in caplog.records if r.name == "custom_components.securityspy"]
+    errors = [r for r in own if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert SERVER_NAME in errors[0].getMessage()
+    assert coordinator.stream_connected is False
+
+
+async def test_stream_reconnect_logs_exactly_one_warning(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A recovered connection logs one WARNING, and no more on repeated signals."""
+    entry = _add_entry(hass)
+    server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    client.async_get_server_info = AsyncMock(return_value=server)
+    client.async_get_camera_status = AsyncMock(return_value=())
+    coordinator = _make_coordinator(hass, entry, server, client)
+    await _start_without_a_real_timer(coordinator)
+
+    with caplog.at_level("DEBUG"):
+        await coordinator.async_handle_stream_reconnected()
+        await coordinator.async_handle_stream_reconnected()
+        await coordinator.async_handle_stream_reconnected()
+
+    own = [r for r in caplog.records if r.name == "custom_components.securityspy"]
+    warnings = [r for r in own if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert SERVER_NAME in warnings[0].getMessage()
+    assert coordinator.stream_connected is True
+
+
+async def test_stream_second_loss_recovery_cycle_logs_one_error_and_one_warning_again(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A second outage logs its own ERROR/WARNING pair; the dedup flag resets each flip."""
+    entry = _add_entry(hass)
+    server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    client.async_get_server_info = AsyncMock(return_value=server)
+    client.async_get_camera_status = AsyncMock(return_value=())
+    coordinator = _make_coordinator(hass, entry, server, client)
+    await _start_without_a_real_timer(coordinator)
+    coordinator.async_set_stream_connected(True)  # noqa: FBT003 - the flag under test
+
+    with caplog.at_level("DEBUG"):
+        coordinator.async_handle_stream_disconnected()
+        await coordinator.async_handle_stream_reconnected()
+        coordinator.async_handle_stream_disconnected()
+        await coordinator.async_handle_stream_reconnected()
+
+    own = [r for r in caplog.records if r.name == "custom_components.securityspy"]
+    errors = [r for r in own if r.levelname == "ERROR"]
+    warnings = [r for r in own if r.levelname == "WARNING"]
+    assert len(errors) == 2  # noqa: PLR2004 - one per loss
+    assert len(warnings) == 2  # noqa: PLR2004 - one per recovery
 
 
 async def test_a_failed_poll_marks_the_update_failed_once_and_success_restores_it(

@@ -344,3 +344,11 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-2-recover-from-connection-loss-without-being-asked.md`
   summary: `_async_reconcile`/`_async_poll_light_status` have no guard against two concurrent invocations (e.g. a slow fetch from the periodic timer still in flight when the stream's `on_reconnected` handler calls the same coroutines); the slower response finishing last can publish stale data over fresher data via `async_set_updated_data(replace(self.data, ...))`.
   evidence: Blind Hunter review of the story 3.2 diff. The race predates 3.2 (two overlapping timer ticks could already interleave); this story adds a third caller into the same unguarded window, making it more likely to trigger around the outages this story targets.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-3-log-problems-once-not-continuously.md`
+  summary: `async_handle_stream_reconnected` unconditionally re-runs `_async_reconcile()`/`_async_poll_light_status()` even on a redundant reconnect signal where `stream_connected` was already `True`, so a duplicate signal costs a full network reconciliation even though it now logs nothing.
+  evidence: Blind Hunter review of story 3.3's diff. The cost predates this story (inherited from 3.2's reconnect handler); 3.3's new log-gating makes the silence around this repeated cost easier to miss since nothing surfaces in the log for a redundant signal.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-3-log-problems-once-not-continuously.md`
+  summary: The new connection-loss/recovery log lines identify the server only by `ServerInfo.name`, which is server-reported and not guaranteed unique across config entries; two identically-named SecuritySpy servers configured as separate entries would produce indistinguishable log lines.
+  evidence: Blind Hunter review of story 3.3's diff. `ServerInfo.name` docstring guarantees non-empty but not uniqueness; the story's AC only requires "naming the server," which this satisfies, but the ambiguity risk was flagged as a real gap for multi-server setups.

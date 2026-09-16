@@ -220,6 +220,8 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
     @callback
     def async_handle_stream_disconnected(self) -> None:
         """Record a lost connection; push-derived entities go unavailable."""
+        if self.stream_connected:
+            LOGGER.error("SecuritySpy stream connection to %s lost", self.data.server.name)
         self.async_set_stream_connected(False)  # noqa: FBT003 - the flag being recorded
 
     async def async_handle_stream_reconnected(self) -> None:
@@ -231,6 +233,8 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
         than waiting for their own next scheduled tick, which could be up to
         `RECONCILE_INTERVAL` away.
         """
+        if not self.stream_connected:
+            LOGGER.warning("SecuritySpy stream connection to %s recovered", self.data.server.name)
         self.async_set_stream_connected(True)  # noqa: FBT003 - the flag being recorded
         await self._async_reconcile()
         await self._async_poll_light_status()
