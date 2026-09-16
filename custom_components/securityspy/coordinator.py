@@ -26,10 +26,19 @@ Story 3.1 makes a failed poll visible instead of silently keeping stale data:
 either poll failing flips `last_update_success` to False, so every entity goes
 unavailable until the next successful poll restores it through
 `async_set_updated_data`. It also adds the `stream_connected` flag the push
-availability layer reads (Story 3.2 wires the stream that sets it), and stops
-reconciliation from removing devices: a camera that leaves the inventory keeps
-its device, and history, until the user deletes it through
-`async_remove_config_entry_device`.
+availability layer reads, and stops reconciliation from removing devices: a
+camera that leaves the inventory keeps its device, and history, until the
+user deletes it through `async_remove_config_entry_device`.
+
+Story 3.2 wires the Event Stream's lifecycle into that flag: `__init__.py`
+builds the stream and points its `on_connected`/`on_disconnected` callbacks at
+`async_handle_stream_connected`/`async_handle_stream_disconnected` below,
+`on_reconnected` at `async_handle_stream_reconnected` (which also triggers a
+full reconciliation -- FR-31 requires refreshed state, not a resume from
+whatever was last known), and `on_auth_failed` straight at the existing
+`record_auth_failure` (AD-18: one counter, fed by both planes). The stream
+itself owns heartbeat detection and indefinite backoff (AD-11); nothing here
+retries or times out anything.
 """
 
 from __future__ import annotations
@@ -196,6 +205,35 @@ class SecuritySpyDataUpdateCoordinator(DataUpdateCoordinator[SecuritySpyData]):
             return
         self.stream_connected = connected
         self.async_update_listeners()
+
+    @callback
+    def async_handle_stream_connected(self) -> None:
+        """Record the stream's first-ever successful connect (FR-31).
+
+        No reconciliation is triggered: `async_start` already synced the
+        registry moments earlier from the same `ServerInfo` `__init__.py`
+        fetched for `test-before-setup`, so this is the stream catching up to
+        state the poll plane already established, not new information.
+        """
+        self.async_set_stream_connected(True)  # noqa: FBT003 - the flag being recorded
+
+    @callback
+    def async_handle_stream_disconnected(self) -> None:
+        """Record a lost connection; push-derived entities go unavailable."""
+        self.async_set_stream_connected(False)  # noqa: FBT003 - the flag being recorded
+
+    async def async_handle_stream_reconnected(self) -> None:
+        """Recover from an outage: mark the stream up and refresh every poll plane.
+
+        FR-31 requires a full reconciliation from the reconnect signal --
+        "refreshing all poll-derived state rather than resuming with whatever
+        was last known" -- so both the heavy and light polls run here rather
+        than waiting for their own next scheduled tick, which could be up to
+        `RECONCILE_INTERVAL` away.
+        """
+        self.async_set_stream_connected(True)  # noqa: FBT003 - the flag being recorded
+        await self._async_reconcile()
+        await self._async_poll_light_status()
 
     @callback
     def _async_mark_poll_failed(self) -> None:

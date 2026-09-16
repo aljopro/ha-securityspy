@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +24,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 
 from custom_components.securityspy import async_remove_config_entry_device
 from custom_components.securityspy.const import (
+    AUTH_FAILURE_THRESHOLD,
     CONF_CREATE_CAMERA_ENTITIES,
     DOMAIN,
     LIGHT_POLL_INTERVAL,
@@ -464,6 +466,119 @@ async def test_setup_tolerates_a_relay_that_cannot_bind(
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     mock_relay.async_stop.assert_not_awaited()
+
+
+async def test_setup_connects_the_stream_and_unload_disconnects_it(
+    hass: HomeAssistant, mock_client: MagicMock, mock_event_stream: MagicMock
+) -> None:
+    """The stream is built once, connected once, and disconnected on unload."""
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_client.event_stream.assert_called_once()
+    mock_event_stream.connect.assert_awaited_once()
+    assert entry.runtime_data.stream is mock_event_stream
+    mock_event_stream.disconnect.assert_not_awaited()
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_event_stream.disconnect.assert_awaited_once()
+
+
+async def test_stream_is_built_with_the_servers_utc_offset(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """A server publishing a real UTC offset gets a matching fixed-offset timezone.
+
+    `ServerInfo` has no offset kwarg in the shared `make_server_info` builder
+    (frozen dataclass, `object.__setattr__` sidesteps that for this one field).
+    """
+    offset = timedelta(hours=-5)
+    server = make_server_info()
+    object.__setattr__(server, "utc_offset", offset)
+    mock_client.async_get_server_info.return_value = server
+    entry = _add_entry(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    _args, kwargs = mock_client.event_stream.call_args
+    assert kwargs["server_timezone"] == timezone(offset)
+
+
+async def test_stream_defaults_to_utc_without_a_published_offset(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """A server that publishes no usable offset gets UTC (the library's own fallback)."""
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    _args, kwargs = mock_client.event_stream.call_args
+    assert kwargs["server_timezone"] is UTC
+
+
+async def test_stream_lifecycle_callbacks_are_wired_to_the_coordinator(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """Each lifecycle kwarg is the coordinator's matching handler, not a copy of it."""
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data.coordinator
+    _args, kwargs = mock_client.event_stream.call_args
+    assert kwargs["on_connected"] == coordinator.async_handle_stream_connected
+    assert kwargs["on_disconnected"] == coordinator.async_handle_stream_disconnected
+    assert kwargs["on_reconnected"] == coordinator.async_handle_stream_reconnected
+    assert kwargs["on_auth_failed"] == coordinator.record_auth_failure
+
+
+async def test_stream_reconnect_triggers_a_full_reconciliation(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """FR-31: reconnecting refreshes poll-derived state and notifies listeners."""
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data.coordinator
+    mock_client.async_get_server_info.reset_mock()
+    mock_client.async_get_camera_status.reset_mock()
+    listener = MagicMock()
+    unsub = coordinator.async_add_listener(listener)
+
+    _args, kwargs = mock_client.event_stream.call_args
+    await kwargs["on_reconnected"]()
+
+    assert coordinator.stream_connected is True
+    # At least the connected-flag flip notifies; the poll refreshes notify too.
+    assert listener.call_count >= 1
+    mock_client.async_get_server_info.assert_awaited_once()
+    mock_client.async_get_camera_status.assert_awaited_once()
+    unsub()
+
+
+async def test_stream_auth_failed_counts_towards_the_shared_threshold(
+    hass: HomeAssistant, mock_client: MagicMock
+) -> None:
+    """`on_auth_failed` is `record_auth_failure` itself: it feeds the AD-18 counter."""
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data.coordinator
+    _args, kwargs = mock_client.event_stream.call_args
+
+    with patch.object(entry, "async_start_reauth") as start_reauth:
+        kwargs["on_auth_failed"]()
+        kwargs["on_auth_failed"]()
+        kwargs["on_auth_failed"]()
+
+    assert coordinator.auth_failures == AUTH_FAILURE_THRESHOLD
+    start_reauth.assert_called_once_with(hass)
 
 
 async def test_missing_permission_issues_survive_unload_and_go_with_the_entry(

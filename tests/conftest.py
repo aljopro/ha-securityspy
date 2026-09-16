@@ -195,6 +195,18 @@ def mock_relay(mock_client: MagicMock) -> MagicMock:
     return relay
 
 
+@pytest.fixture
+def mock_event_stream(mock_client: MagicMock) -> MagicMock:
+    """Return the stream the mocked client's `event_stream` hands out.
+
+    Already awaitable on `connect`/`disconnect` -- see `mock_client_class`,
+    which configures this on every test's client so setup never needs a test
+    to opt in just to get past `await stream.connect()`.
+    """
+    stream: MagicMock = mock_client.event_stream.return_value
+    return stream
+
+
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(
     enable_custom_integrations: None,
@@ -226,6 +238,12 @@ def mock_client_class() -> Generator[MagicMock]:
         # starts with.
         client_class.return_value.async_get_camera_status.return_value = ()
         client_class.return_value.create_rtsp_relay.return_value = make_relay()
+        # `event_stream()` itself is synchronous (it just builds the object),
+        # but its instance's `connect`/`disconnect` are awaited by setup and
+        # unload; autospec does not know that about a plain `MagicMock`
+        # return value, so both are given directly as every test's default.
+        client_class.return_value.event_stream.return_value.connect = AsyncMock()
+        client_class.return_value.event_stream.return_value.disconnect = AsyncMock()
         yield client_class
 
 

@@ -15,12 +15,20 @@ before creating a permission-dependent entity, and setup turns its recorded
 denials into repair issues once every platform has been forwarded.
 Story 3.1 adds ``async_remove_config_entry_device``: reconciliation no longer
 removes devices, so a camera that leaves the inventory is deleted by the user.
+Story 3.2 adds ``_async_start_stream``: the Event Stream is built here, right
+alongside the RTSP relay it mirrors in shape, and its lifecycle callbacks are
+pointed at the coordinator (``coordinator.py`` owns what each one does).
+Connecting is non-blocking (``connect()`` schedules the reader and returns),
+so a server that is unreachable at startup does not delay setup -- the same
+``ConfigEntryNotReady`` retry above already covers that case for the initial
+fetch, and the stream's own indefinite backoff covers every later one.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, timezone
 from typing import TYPE_CHECKING, Final
 
 from aiosecurityspy import (
@@ -57,7 +65,7 @@ from .permissions import PermissionGate, issue_id
 _LOGGER: Final = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from aiosecurityspy import RtspRelay, ServerInfo
+    from aiosecurityspy import RtspRelay, SecuritySpyEventStream, ServerInfo, StreamEvent
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers import device_registry as dr
 
@@ -80,6 +88,9 @@ class SecuritySpyRuntimeData:
     coordinator: SecuritySpyDataUpdateCoordinator
     #: The one permission gate every platform consults (story 2.7).
     permission_gate: PermissionGate
+    #: The connected (or reconnecting) Event Stream (story 3.2). Always
+    #: present -- unlike the relay, nothing makes the stream optional.
+    stream: SecuritySpyEventStream
     #: The started RTSP relay, or ``None`` when camera entities are off, the
     #: server publishes no RTSP port, or the relay could not bind.
     relay: RtspRelay | None = None
@@ -208,18 +219,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) 
 
     coordinator = SecuritySpyDataUpdateCoordinator(hass, entry, client, server)
     relay = await _async_start_relay(entry, client, server)
+
+    # Registers devices from the server already fetched above -- no second
+    # fetch (see coordinator.async_start's own docstring) -- and schedules the
+    # periodic reconciliation timer that keeps them current without a reload.
+    # Deliberately before `_async_start_stream`: `async_handle_stream_connected`
+    # skips reconciling on the stream's first connect on the strength of the
+    # registry already being synced, which is only true if this has already
+    # run -- `async_start` itself never awaits anything, but the stream's own
+    # reader does, so starting the stream first would leave that ordering an
+    # accident of scheduling rather than a fact the code establishes.
+    await coordinator.async_start()
+
+    stream = await _async_start_stream(entry, client, server, coordinator)
     entry.runtime_data = SecuritySpyRuntimeData(
         client=client,
         server=server,
         coordinator=coordinator,
         permission_gate=PermissionGate(coordinator, entry.entry_id),
+        stream=stream,
         relay=relay,
     )
-
-    # Registers devices from the server already fetched above -- no second
-    # fetch (see coordinator.async_start's own docstring) -- and schedules the
-    # periodic reconciliation timer that keeps them current without a reload.
-    await coordinator.async_start()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # After forwarding, so every platform has asked the gate: one issue per
@@ -268,6 +288,72 @@ async def _async_start_relay(
         return None
     entry.async_on_unload(relay.async_stop)
     return relay
+
+
+async def _async_start_stream(
+    entry: SecuritySpyConfigEntry,
+    client: SecuritySpyClient,
+    server: ServerInfo,
+    coordinator: SecuritySpyDataUpdateCoordinator,
+) -> SecuritySpyEventStream:
+    """Build the Event Stream, wire its lifecycle into the coordinator, and connect it.
+
+    Registered for unload before connecting, not after: `disconnect()` is
+    idempotent (FR-33), so there is no harm in owning the callback a moment
+    before there is anything to disconnect, and doing it first means a stream
+    that somehow starts delivering before this function returns can never
+    outlive the entry that owns it.
+
+    Heartbeat and backoff tuning are left at the library's own defaults
+    (AD-11): they already match this project's documented interval (loss
+    within 3 missed heartbeats) and retry policy (indefinite exponential
+    backoff), so restating them here would only be a second place for the two
+    to drift apart.
+
+    Args:
+        entry: The config entry the stream belongs to; its unload stops the
+            stream.
+        client: The client the stream reads its validated connection from.
+        server: The already-fetched server, whose `utc_offset` timestamps the
+            stream's own events. `[ASSUMPTION]` (library-documented): no
+            SecuritySpy endpoint publishes it independently of `++systemInfo`,
+            so a server that omits it is treated as UTC -- the library's own
+            fallback for the same gap.
+        coordinator: Whose `async_handle_stream_connected`,
+            `async_handle_stream_disconnected`, `async_handle_stream_reconnected`
+            and `record_auth_failure` become the stream's four lifecycle
+            callbacks.
+
+    Returns:
+        The connecting (or already-connected) stream.
+
+    """
+    stream = client.event_stream(
+        on_event=_async_handle_stream_event,
+        on_connected=coordinator.async_handle_stream_connected,
+        on_disconnected=coordinator.async_handle_stream_disconnected,
+        on_reconnected=coordinator.async_handle_stream_reconnected,
+        on_auth_failed=coordinator.record_auth_failure,
+        server_timezone=timezone(server.utc_offset) if server.utc_offset is not None else UTC,
+    )
+    entry.async_on_unload(stream.disconnect)
+    # Non-blocking (AD-10): schedules the reader and returns rather than
+    # waiting for the first handshake, so a server that is down at startup
+    # does not delay `async_setup_entry` -- the stream's own indefinite
+    # backoff (AD-11) keeps retrying afterwards regardless.
+    await stream.connect()
+    return stream
+
+
+async def _async_handle_stream_event(event: StreamEvent) -> None:
+    """Discard a decoded event; no consumer reads one yet.
+
+    `on_event` is not optional on `SecuritySpyEventStream` (a stream with
+    nothing to deliver events to is still a stream), but this story owns only
+    the connection lifecycle (FR-31) -- Epic 4/5 are what read a `StreamEvent`
+    to update observation state, and until one of them exists there is
+    nothing correct to do with it here.
+    """
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SecuritySpyConfigEntry) -> bool:

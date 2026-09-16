@@ -336,3 +336,11 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-1-report-unavailable-rather-than-stale.md`
   summary: Reconcile no longer removes devices, and `async_remove_config_entry_device` allows only parseable current-UUID camera devices. A device with a malformed or foreign-UUID identifier under the entry can therefore never be removed.
   evidence: Both reviewers flagged it. Today such devices can only arise from an out-of-band registry write, because reconfigure aborts on `wrong_server`. The intent contract limits removal to `{uuid}_{n}` devices.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-2-recover-from-connection-loss-without-being-asked.md`
+  summary: A credential valid for the poll endpoints but specifically denied on `++eventStream` gets exactly one `on_auth_failed` call; the library pauses its own reconnection until `resume()`, which nothing in the integration ever calls, so `stream_connected` can stay permanently `False` with no repair issue or distinguishing log line pointing at the cause (poll-plane successes keep resetting the shared AD-18 counter below the reauth threshold).
+  evidence: Blind Hunter review of the story 3.2 diff. Push-derived entities do go unavailable (correct per 3.1's availability layer), but nothing in the log or UI explains why the outage never resolves, unlike a genuine network drop, which does recover.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-2-recover-from-connection-loss-without-being-asked.md`
+  summary: `_async_reconcile`/`_async_poll_light_status` have no guard against two concurrent invocations (e.g. a slow fetch from the periodic timer still in flight when the stream's `on_reconnected` handler calls the same coroutines); the slower response finishing last can publish stale data over fresher data via `async_set_updated_data(replace(self.data, ...))`.
+  evidence: Blind Hunter review of the story 3.2 diff. The race predates 3.2 (two overlapping timer ticks could already interleave); this story adds a third caller into the same unguarded window, making it more likely to trigger around the outages this story targets.

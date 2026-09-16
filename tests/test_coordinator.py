@@ -806,6 +806,53 @@ async def test_stream_connected_starts_false_and_notifies_only_on_change(
     unsub()
 
 
+async def test_stream_connected_handler_sets_the_flag_without_reconciling(
+    hass: HomeAssistant,
+) -> None:
+    """The first-ever connect only flips the flag; setup already synced the registry."""
+    entry = _add_entry(hass)
+    server = make_server_info()
+    client = MagicMock()
+    coordinator = _make_coordinator(hass, entry, server, client)
+    await _start_without_a_real_timer(coordinator)
+
+    coordinator.async_handle_stream_connected()
+
+    assert bool(coordinator.stream_connected) is True
+    client.async_get_server_info.assert_not_called()
+    client.async_get_camera_status.assert_not_called()
+
+
+async def test_stream_disconnected_handler_clears_the_flag(hass: HomeAssistant) -> None:
+    """A lost connection flips `stream_connected` back to False."""
+    entry = _add_entry(hass)
+    coordinator = _make_coordinator(hass, entry, make_server_info())
+    coordinator.async_set_stream_connected(True)  # noqa: FBT003 - the flag under test
+
+    coordinator.async_handle_stream_disconnected()
+
+    assert bool(coordinator.stream_connected) is False
+
+
+async def test_stream_reconnected_handler_sets_the_flag_and_refreshes_both_polls(
+    hass: HomeAssistant,
+) -> None:
+    """FR-31: a reconnect re-fetches both the heavy and light poll planes."""
+    entry = _add_entry(hass)
+    server = make_server_info_with_cameras(cameras=(make_camera(1, "Driveway"),))
+    client = MagicMock()
+    client.async_get_server_info = AsyncMock(return_value=server)
+    client.async_get_camera_status = AsyncMock(return_value=())
+    coordinator = _make_coordinator(hass, entry, server, client)
+    await _start_without_a_real_timer(coordinator)
+
+    await coordinator.async_handle_stream_reconnected()
+
+    assert bool(coordinator.stream_connected) is True
+    client.async_get_server_info.assert_awaited_once()
+    client.async_get_camera_status.assert_awaited_once()
+
+
 async def test_a_failed_poll_marks_the_update_failed_once_and_success_restores_it(
     hass: HomeAssistant,
 ) -> None:
