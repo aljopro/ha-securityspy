@@ -85,7 +85,7 @@ development_status:
   3-1-report-unavailable-rather-than-stale: done
   3-2-recover-from-connection-loss-without-being-asked: done
   3-3-log-problems-once-not-continuously: done
-  3-4-unload-and-reload-cleanly: backlog
+  3-4-unload-and-reload-cleanly: done
   epic-3-retrospective: optional
   epic-4: backlog
   4-1-spike-when-does-securityspy-write-classification-to-a-capture: backlog

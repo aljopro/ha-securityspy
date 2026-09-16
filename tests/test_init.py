@@ -19,6 +19,8 @@ from aiosecurityspy import (
 )
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_SSL, CONF_VERIFY_SSL
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
@@ -46,8 +48,15 @@ from .conftest import (
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers import device_registry as dr
     from homeassistant.helpers import issue_registry as ir
+
+#: One relay start / stream connect per load: the second of two back-to-back
+#: setups on the same entry.
+EXPECTED_STARTS_AFTER_RELOAD = 2
+
+#: One relay stop / stream disconnect per unload: the second of two full
+#: unload/reload cycles.
+EXPECTED_STOPS_AFTER_TWO_CYCLES = 2
 
 
 def _add_entry(hass: HomeAssistant, data: dict[str, Any] | None = None) -> MockConfigEntry:
@@ -485,6 +494,115 @@ async def test_setup_connects_the_stream_and_unload_disconnects_it(
     await hass.async_block_till_done()
 
     mock_event_stream.disconnect.assert_awaited_once()
+
+
+async def test_unload_then_reload_loads_again_with_fresh_state(
+    hass: HomeAssistant,
+    mock_relay: MagicMock,
+    mock_event_stream: MagicMock,
+) -> None:
+    """AC2: an unloaded entry reloads to LOADED without a Home Assistant restart.
+
+    The coordinator is rebuilt from scratch on the second load (a fresh
+    object, not the first load's instance); the relay and stream are the
+    mocked client's stand-ins across both loads, so a fresh *start*/*connect*
+    each cycle is asserted by await count rather than object identity.
+    """
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    first_coordinator = entry.runtime_data.coordinator
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    state_after_unload = entry.state
+    assert state_after_unload is ConfigEntryState.NOT_LOADED
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state_after_reload = entry.state
+    assert state_after_reload is ConfigEntryState.LOADED
+    assert entry.runtime_data.coordinator is not first_coordinator
+    assert mock_relay.async_start.await_count == EXPECTED_STARTS_AFTER_RELOAD
+    assert mock_event_stream.connect.await_count == EXPECTED_STARTS_AFTER_RELOAD
+
+
+async def test_repeated_unload_reload_cycles_leave_no_accumulating_state(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    mock_relay: MagicMock,
+    mock_event_stream: MagicMock,
+) -> None:
+    """AC2: two full unload/reload cycles neither leak a timer nor double-stop anything.
+
+    `async_start` registers *two* timers each call -- the reconciliation
+    timer (`_async_reconcile`) and the light-poll timer
+    (`_async_poll_light_status`) -- both cancelled through the same
+    `_cancel_timers`/`entry.async_on_unload` callback. A second `async_start`
+    could double-register either one if the first cycle's callback failed to
+    cancel it: firing the clock once after the second load would then fire
+    the leaked timer alongside the current one instead of just once, so both
+    are asserted by await count, not only the reconciliation one.
+    `relay.async_stop`/`stream.disconnect` are asserted by await count for
+    the same reason -- an accumulating leak would over-call them on the
+    second unload, not under-call them.
+    """
+    entry = _add_entry(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_relay.async_stop.await_count == 1
+    assert mock_event_stream.disconnect.await_count == 1
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    reconcile_calls_before_tick = mock_client.async_get_server_info.await_count
+    light_poll_calls_before_tick = mock_client.async_get_camera_status.await_count
+
+    async_fire_time_changed(hass, dt_util.utcnow() + RECONCILE_INTERVAL * 2)
+    await hass.async_block_till_done()
+    assert mock_client.async_get_server_info.await_count == reconcile_calls_before_tick + 1
+    assert mock_client.async_get_camera_status.await_count == light_poll_calls_before_tick + 1
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert mock_relay.async_stop.await_count == EXPECTED_STOPS_AFTER_TWO_CYCLES
+    assert mock_event_stream.disconnect.await_count == EXPECTED_STOPS_AFTER_TWO_CYCLES
+
+    # Nothing survives the second unload either.
+    reconcile_calls_after_final_unload = mock_client.async_get_server_info.await_count
+    light_poll_calls_after_final_unload = mock_client.async_get_camera_status.await_count
+    async_fire_time_changed(hass, dt_util.utcnow() + RECONCILE_INTERVAL * 2)
+    await hass.async_block_till_done()
+    assert mock_client.async_get_server_info.await_count == reconcile_calls_after_final_unload
+    assert mock_client.async_get_camera_status.await_count == light_poll_calls_after_final_unload
+
+
+async def test_remove_entry_clears_the_device_and_entity_registries(
+    hass: HomeAssistant,
+    mock_client: MagicMock,
+    device_registry: dr.DeviceRegistry,
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """AC3: removing a loaded entry with a camera leaves neither registry holding it."""
+    mock_client.async_get_server_info.return_value = make_server_info_with_cameras(
+        cameras=(make_camera(1, "Driveway"),)
+    )
+    entry = _add_entry(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    assert er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert not dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    assert not er.async_entries_for_config_entry(entity_registry, entry.entry_id)
 
 
 async def test_stream_is_built_with_the_servers_utc_offset(

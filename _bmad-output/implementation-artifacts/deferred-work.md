@@ -352,3 +352,7 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-3-log-problems-once-not-continuously.md`
   summary: The new connection-loss/recovery log lines identify the server only by `ServerInfo.name`, which is server-reported and not guaranteed unique across config entries; two identically-named SecuritySpy servers configured as separate entries would produce indistinguishable log lines.
   evidence: Blind Hunter review of story 3.3's diff. `ServerInfo.name` docstring guarantees non-empty but not uniqueness; the story's AC only requires "naming the server," which this satisfies, but the ambiguity risk was flagged as a real gap for multi-server setups.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-unload-and-reload-cleanly.md`
+  summary: No test exercises the RTSP relay's `OSError` bind-failure branch (`_async_start_relay`'s `except OSError`, which returns `None` and skips `entry.async_on_unload` registration) across an unload/reload cycle -- only on a fresh first load (`test_setup_tolerates_a_relay_that_cannot_bind`).
+  evidence: Edge Case Hunter review of story 3.4's diff. The branch itself predates this story and is already covered on first load; a reload where the relay newly fails to bind (e.g. a port freed on unload gets taken by something else before reload) is an untested but plausible real-world sequence.
