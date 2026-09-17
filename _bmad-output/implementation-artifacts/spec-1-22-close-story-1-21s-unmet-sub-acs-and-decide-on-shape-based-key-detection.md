@@ -2,12 +2,13 @@
 title: 'Close Story 1.21''s unmet sub-ACs and decide on shape-based key detection'
 type: 'chore'
 created: '2026-09-16'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: true
 context: []
 warnings: []
 baseline_revision: '974a30984837d4b897a1e2be160fce79ed08a279'
+final_revision: '6222b08'
 ---
 
 <intent-contract>
@@ -109,3 +110,29 @@ baseline_revision: '974a30984837d4b897a1e2be160fce79ed08a279'
 
 **Manual checks (if no CLI):**
 - Confirm the research doc and memlog entry contain no secret values, matching every other artifact in this run.
+
+## Auto Run Result
+
+**Summary:** Closed Story 1.21's three unmet sub-ACs on SecuritySpy 6.22+ API keys: added two `.env`-gated live regression tests (both currently skipping, since no operator has configured the new optional fixtures yet), documented all three sub-ACs as explicitly open with reason where unconfirmed, and made one final recommendation — continue deferring shape-based `API_[A-Za-z0-9]{32}` key detection. No production auth/redaction code changed; PRD Open Q11 stays "reopened."
+
+**Files changed:**
+- `aiosecurityspy/.env.example` -- documents `SECURITYSPY_PARTIALKEY_USER`/`_PASS` and `SECURITYSPY_PERCAM_KEY`, with shape guidance for the partial-key fixture.
+- `aiosecurityspy/tests/test_live_server.py` -- two new `@pytest.mark.live` tests: partial-key-shaped-password authentication, and PERCAM key-vs-password camera-scope comparison with a runtime fixture-shape assertion.
+- `_bmad-output/planning-artifacts/research/securityspy-api-keys-6.22.md` -- "Story 1.22 follow-up" section: per-sub-AC results/open-status and the final defer recommendation.
+- `_bmad-output/planning-artifacts/architecture/architecture-ha-securityspy-2026-08-09/.memlog.md` -- one `(finding)` line.
+- `_bmad-output/planning-artifacts/epics.md` -- added Story 1.22 (via preceding correct-course pass).
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` -- `1-22-...: done`.
+- `_bmad-output/implementation-artifacts/epic-1-context.md` -- recompiled to include Story 1.22 (done during step-01, ahead of this spec).
+- `_bmad-output/planning-artifacts/sprint-change-proposal-2026-09-16-b.md` -- the correct-course proposal that added this story (preceding this dev-auto run).
+
+**Review findings:** 5 patched (1 medium, 4 low; all applied), 0 deferred, 12 rejected as noise (inherent manual-UI limits mirroring Story 1.21's own precedent, matches to existing file conventions, and one reviewer misunderstanding of `pytest.raises` semantics). The medium finding was substantive: the original PERCAM test only checked a client-side guard that would hold regardless of server behavior, so it was rewritten to actually compare key- vs password-authenticated camera visibility — the real question the AC asks.
+
+**Verification:**
+- `uv run ruff check . && uv run ruff format --check .` -- clean.
+- `uv run mypy --strict src tests` -- clean, 25 source files.
+- `uv run pytest -q -k "not live"` -- 1075 passed.
+- `uv run pytest -m live -q` -- 20 passed, 3 skipped (including both new tests, skipping with their expected "not set" messages), 1 failed (`test_live_relay_stream_decodes_through_ffprobe`, the same pre-existing, unrelated RTSP-connectivity failure documented in Story 1.21 — confirmed not caused by this change).
+
+**Residual risks:** all three of Story 1.21's original sub-ACs remain unconfirmed against a live server — two now have regression tests ready for whenever an operator configures `SECURITYSPY_PARTIALKEY_USER`/`_PASS` and `SECURITYSPY_PERCAM_KEY`, and the third (key regenerate/delete) stays undocumented-by-design, unchanged from Story 1.21, since exercising it would risk every other live test's fixtures. The pre-existing RTSP relay test failure remains open in the repo, unrelated to this story.
+
+Status: done
