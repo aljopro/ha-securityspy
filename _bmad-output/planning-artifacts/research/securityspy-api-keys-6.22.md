@@ -28,7 +28,7 @@ on the API/RTSP surface for the same account.
 | RTSP `DESCRIBE` | Basic, key as password | 200 OK | Key authenticates the RTSP control channel too |
 | `++settings-general` (admin-only) | Basic, key as password, `Live`-permission account | 403 | Matches what the account's real password would get — `_map_status` (client.py:1263–1268) disambiguates by the account's permission level, not by whether a key or password was presented, so no change is needed there |
 | Any endpoint | `?auth=API_...` (raw key in query string) | 401 | Contradicts the vendor's own help text; observed on both HTTP and RTSP. This is a vendor discrepancy, not a library bug — the library's `unsecured_stream_url()` and relay paths never build this form, so nothing here is affected |
-| Any endpoint | `?auth=base64(username:key)` or `?auth=base64(:key)` (key wrapped the same way Basic auth wraps it) | 200 | Base64-wrapping works in the query string even though the raw key does not |
+| Any endpoint | `?auth=base64(username:key)`, `?auth=base64(:key)`, or `?auth=base64(made-up-username:key)` (key wrapped the same way Basic auth wraps it) | 200 | Base64-wrapping works in the query string even though the raw key does not; the username is ignored here exactly as it is in the Basic-auth header form |
 | Web UI `/` | Basic, key as password | 403 | The server actively refuses a key at the web login, versus 200 for the real password and 200 for no auth at all |
 
 ## Key format observed
@@ -75,6 +75,19 @@ a known edge case, not addressed with any library change.
 
 Both are called out here explicitly rather than silently skipped, per the
 spec's constraint against fabricating a result.
+
+## Update (2026-09-16, follow-up)
+
+The `auth=` query-string finding above now has regression coverage:
+`test_live_raw_key_in_auth_query_param_is_rejected` and
+`test_live_base64_wrapped_key_in_auth_query_param_is_accepted` in
+`aiosecurityspy/tests/test_live_server.py`. The base64-wrapped form was
+additionally confirmed live with a made-up username (not the account's real
+one), closing the one untested combination from the original table above:
+any username works in the query-string form too, exactly as it does in the
+Basic-auth header form. This closes one of the two items logged to
+`deferred-work.md` after the first review pass; the SAMEKEY lock-out test
+remains open.
 
 ## Recommendation
 

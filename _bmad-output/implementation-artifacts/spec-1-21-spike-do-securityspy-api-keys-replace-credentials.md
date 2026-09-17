@@ -106,6 +106,16 @@ baseline_revision: '4233e21d259c651bdd056ac47028f47dca6142ba'
 **Manual checks (if no CLI):**
 - Confirm the research doc and memlog entry contain no secret values, matching every other artifact in this run.
 
+## Follow-up (2026-09-16, post-done)
+
+User asked whether the base64-wrapped `auth=` query form also ignores the username, as the Basic-auth header form does. Confirmed live (made-up username, base64-wrapped with the key: 200). Closed the matching deferred item by adding two regression tests to `aiosecurityspy/tests/test_live_server.py`:
+- `test_live_raw_key_in_auth_query_param_is_rejected`
+- `test_live_base64_wrapped_key_in_auth_query_param_is_accepted` (uses a made-up username, not the real account, so the query-form finding is verified independently of the Basic-auth-header tests)
+
+First attempt left a benign but real aiohttp "unclosed transport" teardown warning (unread response bodies on narrow-selection runs); fixed by draining each response with `await response.read()` before asserting status. Verified stable across three repeated live runs.
+
+Research doc, architecture memlog, and deferred-work.md updated accordingly. The SAMEKEY lock-out deferred item remains open.
+
 ## Auto Run Result
 
 **Summary:** Documented live-verified findings on SecuritySpy 6.22b9+ per-account API keys (PRD Open Q11, reopened 2026-09-16) and added regression coverage for the headline result: a key authenticates identically to the account password everywhere the library's HTTP/RTSP calls need it, with the query-string `auth=` form behaving differently than the vendor's help text describes. No production code changed; this is a spike per Story 1.21.

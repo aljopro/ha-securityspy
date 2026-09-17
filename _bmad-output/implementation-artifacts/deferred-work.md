@@ -360,5 +360,5 @@ status: open
   summary: Add a live test exercising the SECURITYSPY_SAMEKEY_* fixtures to give the password-equals-key lock-out finding automated regression coverage.
   evidence: The .env.example block documents this edge case but no test in the repo reads those three variables; the finding currently rests only on manual testing from the 2026-09-16 session, recorded in research/securityspy-api-keys-6.22.md.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-21-spike-do-securityspy-api-keys-replace-credentials.md`
-  summary: Add a live test asserting the raw `auth=API_...` query-string form is rejected (401) while the base64-wrapped form succeeds, so this vendor-behavior finding is protected against silent change in a future SecuritySpy build.
-  evidence: research/securityspy-api-keys-6.22.md documents this as a live finding, but only the Basic-auth-header behavior got regression tests (test_live_server_info_accepts_key_as_password, test_live_camera_image_accepts_key_as_password); the query-string finding has none.
+  summary: RESOLVED 2026-09-16 -- added test_live_raw_key_in_auth_query_param_is_rejected and test_live_base64_wrapped_key_in_auth_query_param_is_accepted to aiosecurityspy/tests/test_live_server.py; also confirmed live that a made-up username works in the base64-wrapped query form.
+  evidence: (resolved; kept for history)
