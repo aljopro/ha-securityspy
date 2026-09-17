@@ -356,3 +356,9 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-4-unload-and-reload-cleanly.md`
   summary: No test exercises the RTSP relay's `OSError` bind-failure branch (`_async_start_relay`'s `except OSError`, which returns `None` and skips `entry.async_on_unload` registration) across an unload/reload cycle -- only on a fresh first load (`test_setup_tolerates_a_relay_that_cannot_bind`).
   evidence: Edge Case Hunter review of story 3.4's diff. The branch itself predates this story and is already covered on first load; a reload where the relay newly fails to bind (e.g. a port freed on unload gets taken by something else before reload) is an untested but plausible real-world sequence.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-21-spike-do-securityspy-api-keys-replace-credentials.md`
+  summary: Add a live test exercising the SECURITYSPY_SAMEKEY_* fixtures to give the password-equals-key lock-out finding automated regression coverage.
+  evidence: The .env.example block documents this edge case but no test in the repo reads those three variables; the finding currently rests only on manual testing from the 2026-09-16 session, recorded in research/securityspy-api-keys-6.22.md.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-21-spike-do-securityspy-api-keys-replace-credentials.md`
+  summary: Add a live test asserting the raw `auth=API_...` query-string form is rejected (401) while the base64-wrapped form succeeds, so this vendor-behavior finding is protected against silent change in a future SecuritySpy build.
+  evidence: research/securityspy-api-keys-6.22.md documents this as a live finding, but only the Basic-auth-header behavior got regression tests (test_live_server_info_accepts_key_as_password, test_live_camera_image_accepts_key_as_password); the query-string finding has none.
