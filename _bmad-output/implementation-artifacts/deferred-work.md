@@ -357,8 +357,8 @@ status: open
   summary: No test exercises the RTSP relay's `OSError` bind-failure branch (`_async_start_relay`'s `except OSError`, which returns `None` and skips `entry.async_on_unload` registration) across an unload/reload cycle -- only on a fresh first load (`test_setup_tolerates_a_relay_that_cannot_bind`).
   evidence: Edge Case Hunter review of story 3.4's diff. The branch itself predates this story and is already covered on first load; a reload where the relay newly fails to bind (e.g. a port freed on unload gets taken by something else before reload) is an untested but plausible real-world sequence.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-21-spike-do-securityspy-api-keys-replace-credentials.md`
-  summary: Add a live test exercising the SECURITYSPY_SAMEKEY_* fixtures to give the password-equals-key lock-out finding automated regression coverage.
-  evidence: The .env.example block documents this edge case but no test in the repo reads those three variables; the finding currently rests only on manual testing from the 2026-09-16 session, recorded in research/securityspy-api-keys-6.22.md.
+  summary: RESOLVED 2026-09-16 -- added test_live_samekey_password_authenticates_api_endpoints_under_any_username and test_live_samekey_password_is_refused_at_web_login to aiosecurityspy/tests/test_live_server.py.
+  evidence: (resolved; kept for history)
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-21-spike-do-securityspy-api-keys-replace-credentials.md`
   summary: RESOLVED 2026-09-16 -- added test_live_raw_key_in_auth_query_param_is_rejected and test_live_base64_wrapped_key_in_auth_query_param_is_accepted to aiosecurityspy/tests/test_live_server.py; also confirmed live that a made-up username works in the base64-wrapped query form.
   evidence: (resolved; kept for history)

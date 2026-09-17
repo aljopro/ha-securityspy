@@ -86,8 +86,25 @@ additionally confirmed live with a made-up username (not the account's real
 one), closing the one untested combination from the original table above:
 any username works in the query-string form too, exactly as it does in the
 Basic-auth header form. This closes one of the two items logged to
-`deferred-work.md` after the first review pass; the SAMEKEY lock-out test
-remains open.
+`deferred-work.md` after the first review pass.
+
+## Update (2026-09-16, second follow-up)
+
+The password-equals-key lock-out finding also now has regression coverage:
+`test_live_samekey_password_authenticates_api_endpoints_under_any_username`
+and `test_live_samekey_password_is_refused_at_web_login` in
+`aiosecurityspy/tests/test_live_server.py`. Both deferred-work items from
+Story 1.21's review are now resolved.
+
+One incident during this pass: an early verbose (`-v`) test-failure run
+printed the SAMEKEY account's password/key value in full via pytest's
+traceback locals, in a terminal session visible to the user. It was a
+caught-and-fixed `aiohttp.BasicAuth` deprecation warning treated as an error
+(fixed by switching to `aiohttp.encode_basic_auth()`, matching the library's
+own convention), not a defect in the shipped tests, but the exposure is
+recorded here per this project's disclosure discipline. The user was informed
+in-session and the affected account's key should be treated as exposed on
+that local test machine.
 
 ## Recommendation
 

@@ -106,6 +106,28 @@ baseline_revision: '4233e21d259c651bdd056ac47028f47dca6142ba'
 **Manual checks (if no CLI):**
 - Confirm the research doc and memlog entry contain no secret values, matching every other artifact in this run.
 
+## Second follow-up (2026-09-16, post-done)
+
+User asked to close the remaining deferred item: automated coverage for the
+password-equals-key lock-out. Added two live tests exercising
+`SECURITYSPY_SAMEKEY_USER`/`_PASS` (the miscaptured `_KEY` var is
+deliberately unused, documented in code): the API surface accepts the
+password/key under any username, the web UI login refuses it under the
+account's own username. Both deferred-work items from the review pass are
+now resolved.
+
+Hit a real snag: `aiohttp.BasicAuth` is deprecated and this project's pytest
+config turns warnings into errors, so the first version failed outright.
+Switched to `aiohttp.encode_basic_auth()` + an explicit `Authorization`
+header, matching the library's own internal convention. **Incident:** the
+verbose (`-v`) failure output from that first, failing run printed the
+SAMEKEY account's password/key value in full in this terminal session, via
+pytest's traceback locals. Flagged to the user in-session; recorded here per
+project disclosure discipline. Verified stable across three quiet (`-q`, no
+`-v`) reruns after the fix, plus two full `-m live` runs showing no new
+regressions (only the pre-existing, unrelated RTSP-relay connectivity
+failure).
+
 ## Follow-up (2026-09-16, post-done)
 
 User asked whether the base64-wrapped `auth=` query form also ignores the username, as the Basic-auth header form does. Confirmed live (made-up username, base64-wrapped with the key: 200). Closed the matching deferred item by adding two regression tests to `aiosecurityspy/tests/test_live_server.py`:
