@@ -4,7 +4,7 @@
 
 ## Goal
 
-A Python developer can talk to a SecuritySpy server from an ordinary script — query its cameras and capture history, consume its live event stream without the client hanging, and decode what SecuritySpy actually means — with Home Assistant nowhere in sight. This library is the project's durable contribution and is a hard prerequisite for the integration: retrofitting protocol parsing out of the integration later would block Bronze.
+A Python developer can talk to a SecuritySpy server from an ordinary script — query its cameras and capture history, consume its live event stream without the client hanging, and decode what SecuritySpy actually means — with Home Assistant nowhere in sight. This epic exists first because retrofitting a library after writing protocol parsing inside an integration is the large, thankless refactor that blocks Bronze, and because a maintained, standalone SecuritySpy library is the project's durable contribution.
 
 ## Stories
 
@@ -29,23 +29,35 @@ A Python developer can talk to a SecuritySpy server from an ordinary script — 
 - Story 1.19: Relay live video without handing out credentials
 - Story 1.20: Fetch a camera's live still image
 - Story 1.21: Spike — do SecuritySpy API keys replace credentials on every path the library uses?
+- Story 1.22: Close Story 1.21's unmet sub-ACs and decide on shape-based key detection
 
 ## Requirements & Constraints
 
-- Live video must reach Home Assistant with no SecuritySpy credential ever appearing in a stream source, a log at any level, or diagnostics (FR-22, FR-41, FR-42).
-- Destructive and remote-execution SecuritySpy endpoints are excluded from the library's public surface entirely.
-- The library owns all wire-format knowledge (CR-only event-stream framing, `caplist` field decoding, permission/trigger bitmasks, the schedule model, the settings read/write asymmetry, the diagnostics anonymizer) — the integration must never know an endpoint URL or wire format.
-- A `401` can mean a missing permission rather than bad credentials; exception mapping must distinguish these (Story 1.14, carried into any new auth path).
-- Only cameras/resources the authenticated account may actually see are addressable; permission-denied and disabled-camera cases must be indistinguishable by construction (Story 1.18).
-- The library must be independently installable from PyPI and usable in a plain script with no Home Assistant present (SM-9).
+Covers FR-40 (standalone published PyPI library), FR-41 (async, typed, injectable-session library), FR-42 (credential-safe diagnostics), and FR-34 (open classification vocabulary — no enum or fixed set anywhere rejects an unrecognized Object Class). Library-side stories also protect downstream requirements they don't own: correct permission-vs-auth error distinction (protects FR-27/FR-28), correct wall-clock decoding (protects FR-1..FR-8), and credential-free live video/still-image access (FR-22).
+
+The library must be installable from PyPI and importable with no Home Assistant present (validated by SM-9). `requires-python >= 3.14`. CI runs ruff and `mypy --strict` with zero findings; releases publish via PyPI trusted-publisher OIDC, no stored API token, OSI-licensed. No method may exist for deleting captures or executing shell commands/shortcuts on the server — those endpoints are excluded from the public surface entirely.
+
+Two spike gates apply within this epic's late stories: whether SecuritySpy's `caplist.o` field populates at capture close or later (gates Epic 4's freshness claim, tracked as a Phase-2 gate elsewhere) and Story 1.21/1.22's own gate on 6.22 API keys — if no 6.22 test server is available, PRD Open Question 11 stays open and the RTSP relay remains the shipped design; no further decision is required until evidence exists.
 
 ## Technical Decisions
 
-- **AD-13 (Credential and identity containment):** the concern is egress (diagnostics, logs at every level, issue reports, exception messages), not the LAN. Default is non-disclosure — anything PII, secret, or password-shaped is redacted or encrypted, judged by category rather than a fixed field list. A credential-bearing URL (the `auth=` query parameter, base64 or otherwise) may only be constructed inside the library's RTSP relay, on its own upstream connection to SecuritySpy — never returned from a public API, stored, or logged. Consumers get either a relay address or a credential-free `unsecured_stream_url()`. Any value that can't be withheld must be recorded in a disclosure register (field, artifact, reason, reduced form used).
-- **Under review as of 2026-09-16 (ties to PRD Open Q11):** SecuritySpy 6.22b9+ adds per-account API keys (shown as `API_` + 32 base62 characters; used as an HTTP Basic-auth password, or historically proposed as `auth=API_…` though live testing found the raw query form rejected — base64-wrapped works). A key is a secret under AD-13 and must be redacted like a password. Story 1.21 is the spike that determines whether/how the library's auth path changes; **the relay and username/password path are retained regardless**, since servers older than 6.22 have no keys — any key support is additive, not a replacement.
-- The library is versioned and released independently (PyPI, semver tags, OIDC trusted publishing) and pinned as a dependency by the integration (AD-14).
+- All protocol knowledge lives in `aiosecurityspy` (AD-2); `ha-securityspy` consumes it as an ordinary versioned dependency and never copies, vendors, subclasses, or wraps library types to add or correct protocol behavior — a wrong or missing behavior is fixed in the library, never worked around in the adapter.
+- Event stream lines are CR-terminated only (0x0D, no LF) — the single most likely implementation bug; a standard `readline()` hangs.
+- The `caplist` `o` field is a classification bitmask decoded into a set of class strings (empty classification → empty set, never `None`); absolute time reconstructs from `f` (folder date) + `s` (seconds since midnight), using the server's own UTC offset rather than assumed UTC.
+- Settings writes are partial POSTs whose body must begin with the literal sentinel `formData`, carry `cameraNum` in the body (never the query string), and handle the boolean write/read asymmetry (`1`/`0` on write, `true`/`false` on read) inside the library only.
+- Arming writes use `++ssSetSchedule` targeting the transient override only, expressed as independent booleans per capture mode; no library method mutates a schedule assignment, and no query string may ever contain `schedule=` (AD-7).
+- Per-camera `permissions` and per-class trigger-reason bitmasks decode into typed, named structures, not raw integers; an inverted-sense permission (set = deny) is never reported as granted, and a disabled-but-definable reason bit simply doesn't appear.
+- The episode reducer (signal → detection episode) is a pure component: no I/O, no timers, no HA/network imports, injected threshold and debounce per camera and per class, reporting peak (not threshold-crossing) confidence. Target reduction ratio ~190:1.
+- A single declared credential-shaped key set drives anonymization (AD-13), extendable in one place; unrecognized fields default to redacted, not disclosed. Settings payloads never appear in logs at any level.
+- Credential and identifying-network-detail containment (AD-13, widened) applies to the RTSP relay and still-image fetch: URLs the library hands out never carry userinfo or `auth=`, and no password or its base64 form may appear in any log record at any level.
+- Two-repository split (AD-14): `aiosecurityspy` (library, PyPI OIDC release, HACS forbids more than one integration per repo) is fully separate from `ha-securityspy`. Bronze gates release; Silver gates public announcement — decided in Epic 7, not here.
+- API keys (SecuritySpy 6.22b9+) are a reopened design question (PRD Open Q11): resource-scoped tokens were previously superseded by the RTSP relay, then reopened when 6.22 added per-account keys. Story 1.21/1.22 exist purely to gather evidence and make one recommendation; no key-authentication path is implemented inside either story.
 
 ## Cross-Story Dependencies
 
-- Story 1.21 depends on Stories 1.19 (RTSP relay) and 1.20 (still-image fetch) as the concrete auth call sites to test against a live server.
-- Story 1.21's findings gate any future change to FR-22, Story 1.19, Story 1.20, or Story 2.6 (the integration's live-video entity) — such a change goes back through a sprint-change-proposal, not directly into this spike.
+- Stories 1.8–1.10 backfill gaps discovered by auditing 1.1–1.7 against Epics 2, 4, and 6: health fields, the cheap `camStatus` poll, capture media endpoints, `schedule-list`, and the camera-enable write were never assigned to a story. These are hard blockers — because the architecture forbids the integration from knowing any wire format or endpoint URL, Stories 2.4, 2.5, 4.5, 4.7, 6.3, and 6.4 cannot be dispatched until their corresponding 1.8–1.10 story lands.
+- Story 2.6 (live video entities) depends directly on Stories 1.19 (RTSP relay) and 1.20 (live still image).
+- Story 1.22 follows Story 1.21 and exists specifically to close the sub-ACs 1.21 left explicitly open (partial-password-shape lock-out, key regenerate/delete response, cross-permission camera visibility); it makes the one recommendation 1.21 deferred (adopt shape-based key detection now, or keep deferring) but implements neither outcome itself. PRD Open Question 11 stays "reopened" unless 1.22's recommendation is to close it.
+- Story 1.11 and 1.14 both refine the same permission-vs-authentication distinction (1.11 for general endpoints, 1.14 specifically for media/scheduling endpoints answering `401`); both protect FR-27/FR-28, consumed later by Epic 2's reauth flow (Story 2.8).
+- Story 1.16's mode-scoped arming write is a prerequisite for Epic 6's arming controls (FR-12, FR-13).
+- Story 1.18's permission-scoped camera list with stateless health refresh underlies FR-28 (Epic 2, Story 2.7's entity-gating mechanism).

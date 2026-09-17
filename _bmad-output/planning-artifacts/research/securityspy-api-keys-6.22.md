@@ -130,3 +130,88 @@ as the most promising direction, without adopting it here:
 This is a recommendation only. Adopting any option requires a follow-up
 correct-course per this story's own acceptance criteria; PRD Open Q11 stays
 "reopened."
+
+## Story 1.22 follow-up (2026-09-16)
+
+**Server tested:** SecuritySpy 6.22b10 (same server/build as Story 1.21; no
+newer build was available this session).
+
+Closes the three sub-ACs Story 1.21 left unexercised. New regression tests:
+`test_live_partial_key_shaped_password_authenticates_normally` and
+`test_live_percam_key_on_unpermitted_camera_is_denied` in
+`aiosecurityspy/tests/test_live_server.py`, gated on the new optional
+`SECURITYSPY_PARTIALKEY_USER`/`_PASS` and `SECURITYSPY_PERCAM_KEY` fixtures
+documented in `.env.example`.
+
+**Password shaped like a partial key** -- **left open**. Neither
+`SECURITYSPY_PARTIALKEY_USER` nor `_PASS` was configured in this session's
+`.env` (no live server was reachable to generate a fresh partial-key-shaped
+password fixture against), so `test_live_partial_key_shaped_password_authenticates_normally`
+skipped. The test itself is now in place as a regression check for whenever
+an operator with live server access configures the fixture: expected
+behavior, per the key-format finding above (`API_` + exactly 32 base62
+characters), is that a password merely starting with `API_` but the wrong
+length or containing a non-base62 character does not match the shape a
+key-detecting server-side check would use, and so should authenticate as an
+ordinary password under its own account's username -- not fall into the
+SAMEKEY-style any-username lock-out. This remains unconfirmed against a real
+server.
+
+**Key on a camera the account cannot see** -- **left open**. `SECURITYSPY_PERCAM_KEY`
+was not configured in this session's `.env` (obtaining a key for the existing
+PERCAM account requires the SecuritySpy web UI, a manual action this run
+cannot perform), so `test_live_percam_key_on_unpermitted_camera_is_denied`
+skipped. The test is now in place as a regression check: it authenticates as
+PERCAM using the key as the Basic-auth password, then requests a camera
+number absent from that account's own `++systemInfo` inventory. Per
+`client.py::async_get_camera_image`, a camera absent from the inventory is
+refused locally with `SecuritySpyPermissionError` before any request is
+sent -- this local-refusal path does not depend on whether a key or a
+password authenticated the account, so it is expected to hold, but is not
+confirmed against a real server with a real key.
+
+**Key regenerate/delete** -- **left open**, unchanged from Story 1.21.
+Regenerating or deleting a live account's key is a manual SecuritySpy UI
+action that would invalidate the fixture set every other live test in this
+suite depends on (the LIVE and SAMEKEY key/password fixtures in particular).
+Exercising it would require either a disposable account set up solely to be
+broken, or performing the action against a fixture account and then
+re-provisioning every other live test's `.env` values afterward -- both are
+manual operator actions outside what this automated run can safely do
+without risking the rest of the suite. Whether a regenerated/deleted key
+fails cleanly (401) or the server transiently accepts a cached credential
+remains unconfirmed, exactly as Story 1.21 documented.
+
+### Final recommendation: continue deferring shape-based key detection
+
+**Defer.** Do not add `API_[A-Za-z0-9]{32}` shape-based secret detection at
+this time. Rationale, combining evidence from 1.21 and this follow-up:
+
+- The one finding shape-based detection would most directly help with --
+  the SAMEKEY lock-out, where a password equal to a key value gets treated as
+  key-authenticated under any username -- is a SecuritySpy-server-side
+  behavior the library cannot see or influence; a client-side shape check on
+  the *password the caller supplies* would not change what the server does
+  with it, and would only let the library warn a caller ahead of time. That
+  is a usability nicety, not a correctness fix. Whether real operators
+  actually paste key-shaped strings into a password field by accident is an
+  open question this project has no data on either way -- neither this
+  session's own deliberately-constructed fixtures nor any user report confirm
+  it happens, so a client-side warning would be speculative hardening rather
+  than a response to an observed problem.
+- The partial-key-shaped-password sub-AC this follow-up was meant to settle
+  is still unconfirmed (left open above) for lack of a live fixture, so there
+  is no live evidence that a partial match causes any actual problem worth
+  guarding against with a shape check.
+- Two of the three sub-ACs motivating a full close of PRD Open Q11 (partial
+  key password; camera visibility) remain unconfirmed against a live server,
+  and the third (regenerate/delete) is unconfirmed by design. Adopting a new
+  detection mechanism on top of still-open questions would mean shipping a
+  library behavior change ahead of the evidence that would justify it.
+- This does not change the AD-13 item 2 recommendation above (the relay may
+  authenticate upstream with a key): that recommendation concerns how the
+  relay *uses* a key it is given, not whether the library tries to detect one
+  from its shape, and the two are independent.
+
+PRD Open Q11 stays "reopened." This recommendation does not close it; that
+remains a follow-up correct-course decision per this story's own boundaries.

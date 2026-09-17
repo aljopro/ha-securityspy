@@ -862,6 +862,33 @@ So that PRD Open Question 11 is decided on evidence rather than a forum reply. *
 **When** the spike cannot run
 **Then** Open Question 11 stays open and the relay remains the design, with no further decision needed
 
+### Story 1.22: Close Story 1.21's unmet sub-ACs and decide on shape-based key detection
+
+As a builder,
+I want Story 1.21's outstanding acceptance criteria exercised live and a final call made on shape-based API key detection,
+So that PRD Open Question 11's evidence base is complete before any future story adopts a key-authentication path. *(PRD Open Question 11; follows Story 1.21)*
+
+**Acceptance Criteria:**
+
+**Given** an account whose password is set to a value beginning with `API_` but not matching the full `API_[A-Za-z0-9]{32}` shape (e.g. wrong length or a non-base62 character)
+**When** that password is used to authenticate
+**Then** the result is recorded and compared against the password-equals-key lock-out already documented in `research/securityspy-api-keys-6.22.md`, confirming whether prefix alone (without the full shape) ever triggers key treatment
+
+**Given** the settings screen's regenerate and delete controls for a key
+**When** they can be exercised without disrupting any other test account
+**Then** the old key's post-regenerate/post-delete response is recorded and mapped to the library's existing exception types
+**And** if this cannot be exercised safely, the write-up states why and the sub-AC remains explicitly open rather than assumed
+
+**Given** a lower-permission test account that cannot see a given camera
+**When** that account's key is used against that camera's endpoints
+**Then** the result is recorded, confirming whether the key carries exactly the account's camera-visibility permissions
+**And** if no such account/camera pairing can be arranged, the write-up states why and the sub-AC remains explicitly open rather than assumed
+
+**Given** the completed evidence (this story plus Story 1.21's findings)
+**When** the write-up is finished
+**Then** it makes one explicit recommendation — adopt shape-based key detection now, or continue deferring it — with rationale, and implements neither outcome inside this story
+**And** PRD Open Question 11's status is updated only if the recommendation is to close it; otherwise it stays "reopened"
+
 ## Epic 2: Connect and Model
 
 A user adds their SecuritySpy server through the Home Assistant UI and their cameras appear as correctly-named devices beneath one server hub, with no manual renaming and no entity named after an IP address.
