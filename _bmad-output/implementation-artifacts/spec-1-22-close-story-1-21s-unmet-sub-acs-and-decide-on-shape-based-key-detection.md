@@ -8,7 +8,7 @@ followup_review_recommended: true
 context: []
 warnings: []
 baseline_revision: '974a30984837d4b897a1e2be160fce79ed08a279'
-final_revision: '17a89dd'
+final_revision: 'TBD'
 ---
 
 <intent-contract>
@@ -111,6 +111,41 @@ final_revision: '17a89dd'
 **Manual checks (if no CLI):**
 - Confirm the research doc and memlog entry contain no secret values, matching every other artifact in this run.
 
+## Follow-up (2026-09-16, post-done)
+
+User configured `SECURITYSPY_PARTIALKEY_USER`/`_PASS` live against the real
+server and asked to re-run the (previously skipped) partial-key test. It
+failed: the password was refused (401) instead of authenticating normally as
+this story's original write-up expected. Ruled out an account/API-key
+interference hypothesis by deleting the account's real API key and re-testing
+(still 401), then confirmed independently that the same exact credentials log
+into the SecuritySpy **web UI** successfully.
+
+This overturns the original hypothesis for this sub-AC: a password merely
+*starting with* `API_` -- not matching the full 36-char key shape, and with no
+real key configured on the account -- is refused specifically on the
+Basic-auth API surface while working fine at the web UI login. The opposite
+asymmetry from the SAMEKEY case (full-shape match: accepted on API, refused at
+web UI).
+
+Renamed and rewrote `test_live_partial_key_shaped_password_authenticates_normally`
+to `test_live_partial_key_shaped_password_is_refused_on_the_api_surface`,
+asserting the actual (401) result; it now passes against the live server.
+Updated `.env.example`'s comment, the research doc's per-sub-AC section and
+final recommendation (revised from "continue deferring" to "adopt a narrow
+`API_`-prefix diagnostic warning in exception mapping, as a follow-up story"),
+the architecture memlog, and added a deferred-work.md entry for that follow-up
+story. No production code changed in this follow-up -- the recommendation is
+not implemented here, per this story's own boundaries.
+
+**Diagnostic note:** debugging this used only the project's own `pytest -m
+live` test (which never prints credential values) and a raw-fact-only
+structural check of `.env` (lengths and boolean flags, never the values
+themselves). An attempt to materialize the actual password into a shell `curl`
+command for isolated testing was correctly blocked by the harness's credential
+handling policy and was not worked around; the manual web-UI login check the
+user performed themselves was what actually resolved the ambiguity.
+
 ## Auto Run Result
 
 **Summary:** Closed Story 1.21's three unmet sub-ACs on SecuritySpy 6.22+ API keys: added two `.env`-gated live regression tests (both currently skipping, since no operator has configured the new optional fixtures yet), documented all three sub-ACs as explicitly open with reason where unconfirmed, and made one final recommendation — continue deferring shape-based `API_[A-Za-z0-9]{32}` key detection. No production auth/redaction code changed; PRD Open Q11 stays "reopened."
@@ -133,6 +168,6 @@ final_revision: '17a89dd'
 - `uv run pytest -q -k "not live"` -- 1075 passed.
 - `uv run pytest -m live -q` -- 20 passed, 3 skipped (including both new tests, skipping with their expected "not set" messages), 1 failed (`test_live_relay_stream_decodes_through_ffprobe`, the same pre-existing, unrelated RTSP-connectivity failure documented in Story 1.21 — confirmed not caused by this change).
 
-**Residual risks:** all three of Story 1.21's original sub-ACs remain unconfirmed against a live server — two now have regression tests ready for whenever an operator configures `SECURITYSPY_PARTIALKEY_USER`/`_PASS` and `SECURITYSPY_PERCAM_KEY`, and the third (key regenerate/delete) stays undocumented-by-design, unchanged from Story 1.21, since exercising it would risk every other live test's fixtures. The pre-existing RTSP relay test failure remains open in the repo, unrelated to this story.
+**Residual risks (superseded in part by the post-done follow-up above):** the partial-key-shaped-password sub-AC is now confirmed live with a passing regression test, and reversed this story's original conclusion for it. The camera-visibility sub-AC still awaits an operator configuring `SECURITYSPY_PERCAM_KEY`, and key regenerate/delete stays undocumented-by-design, unchanged from Story 1.21, since exercising it would risk every other live test's fixtures. A new deferred-work item now exists for the narrow `API_`-prefix diagnostic-warning follow-up story. The pre-existing RTSP relay test failure remains open in the repo, unrelated to this story.
 
 Status: done

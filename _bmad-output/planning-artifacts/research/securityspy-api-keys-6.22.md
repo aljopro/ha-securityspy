@@ -143,19 +143,44 @@ Closes the three sub-ACs Story 1.21 left unexercised. New regression tests:
 `SECURITYSPY_PARTIALKEY_USER`/`_PASS` and `SECURITYSPY_PERCAM_KEY` fixtures
 documented in `.env.example`.
 
-**Password shaped like a partial key** -- **left open**. Neither
-`SECURITYSPY_PARTIALKEY_USER` nor `_PASS` was configured in this session's
-`.env` (no live server was reachable to generate a fresh partial-key-shaped
-password fixture against), so `test_live_partial_key_shaped_password_authenticates_normally`
-skipped. The test itself is now in place as a regression check for whenever
-an operator with live server access configures the fixture: expected
-behavior, per the key-format finding above (`API_` + exactly 32 base62
-characters), is that a password merely starting with `API_` but the wrong
-length or containing a non-base62 character does not match the shape a
-key-detecting server-side check would use, and so should authenticate as an
-ordinary password under its own account's username -- not fall into the
-SAMEKEY-style any-username lock-out. This remains unconfirmed against a real
-server.
+**Password shaped like a partial key** -- **confirmed live (2026-09-16, post-done
+follow-up)**. An operator configured `SECURITYSPY_PARTIALKEY_USER`/`_PASS`
+against the live server with a password starting `API_` but not matching the
+full 36-character key shape. Contrary to this document's original hypothesis
+(that a partial match would authenticate normally, since it doesn't match the
+shape a key-detecting check would use), the actual result is:
+
+- The password **succeeds** at the SecuritySpy **web UI** login form.
+- The identical password is **refused with 401** on the Basic-auth **API
+  surface** (`++systemInfo`, and by the same code path every other endpoint
+  this library calls), confirmed with `test_live_partial_key_shaped_password_is_refused_on_the_api_surface`.
+- Confirmed with no API key present on the account at all (the operator
+  created one, then deleted it, to rule out interference from a real key
+  coexisting on the same account) -- the rejection is not about a stored key
+  matching or not matching, it happens even with zero keys configured.
+
+This is the **opposite asymmetry** from the SAMEKEY lock-out: SAMEKEY was a
+password matching the *full* key shape being accepted on the API surface but
+refused at the web UI. Here, a password merely *starting with* `API_` --
+regardless of matching the full shape -- is refused on the API surface but
+accepted at the web UI. The most likely explanation is that SecuritySpy's
+Basic-auth/API code path checks for the `API_` prefix alone and attempts a key
+lookup whenever it sees one, refusing outright when no matching key exists,
+while the web login form does not apply that same check. This was not proven
+by isolating the exact server-side logic (this project has no visibility into
+SecuritySpy's implementation), but the behavior itself -- prefix-triggered,
+not shape-triggered, API-surface-only -- is directly observed and now has a
+regression test.
+
+**Practical implication:** an ordinary SecuritySpy account whose real password
+happens to start with `API_` -- for any reason, not just a deliberately
+constructed test fixture -- would be locked out of every API and RTSP
+endpoint this library calls, while still being able to log into the web UI
+normally. That makes the lockout easy for an affected user to miss (their web
+login still works) and hard to diagnose from the library side, since the
+library's own `_map_status` (client.py:1263-1268) has no way to distinguish
+"wrong password" from "password shaped like a key prefix" -- both are a plain
+401.
 
 **Key on a camera the account cannot see** -- **left open**. `SECURITYSPY_PERCAM_KEY`
 was not configured in this session's `.env` (obtaining a key for the existing
@@ -182,36 +207,47 @@ without risking the rest of the suite. Whether a regenerated/deleted key
 fails cleanly (401) or the server transiently accepts a cached credential
 remains unconfirmed, exactly as Story 1.21 documented.
 
-### Final recommendation: continue deferring shape-based key detection
+### Final recommendation (revised 2026-09-16, post-done follow-up): warn on the `API_` prefix in `async_get_camera_image`'s and the client's exception mapping, but do not implement it in this story
 
-**Defer.** Do not add `API_[A-Za-z0-9]{32}` shape-based secret detection at
-this time. Rationale, combining evidence from 1.21 and this follow-up:
+**Adopt a narrow, prefix-only warning -- as a follow-up story, not here.** The
+confirmed partial-key-password finding above changes this document's original
+"continue deferring" conclusion. Revised rationale:
 
-- The one finding shape-based detection would most directly help with --
-  the SAMEKEY lock-out, where a password equal to a key value gets treated as
-  key-authenticated under any username -- is a SecuritySpy-server-side
-  behavior the library cannot see or influence; a client-side shape check on
-  the *password the caller supplies* would not change what the server does
-  with it, and would only let the library warn a caller ahead of time. That
-  is a usability nicety, not a correctness fix. Whether real operators
-  actually paste key-shaped strings into a password field by accident is an
-  open question this project has no data on either way -- neither this
-  session's own deliberately-constructed fixtures nor any user report confirm
-  it happens, so a client-side warning would be speculative hardening rather
-  than a response to an observed problem.
-- The partial-key-shaped-password sub-AC this follow-up was meant to settle
-  is still unconfirmed (left open above) for lack of a live fixture, so there
-  is no live evidence that a partial match causes any actual problem worth
-  guarding against with a shape check.
-- Two of the three sub-ACs motivating a full close of PRD Open Q11 (partial
-  key password; camera visibility) remain unconfirmed against a live server,
-  and the third (regenerate/delete) is unconfirmed by design. Adopting a new
-  detection mechanism on top of still-open questions would mean shipping a
-  library behavior change ahead of the evidence that would justify it.
+- The original deferral rested on there being no live evidence that a
+  password merely starting with `API_` causes a real problem. That evidence
+  now exists: it causes a full lock-out of every API/RTSP endpoint this
+  library calls, silently indistinguishable from a wrong password (`_map_status`,
+  client.py:1263-1268, has no way to tell them apart), while leaving the web
+  UI login working -- an outcome a real operator could hit by accident (a
+  password manager generating a string that happens to start `API_`, or a
+  user reusing a value they saw called "API Key" without understanding its
+  scope) with no clear symptom pointing at the cause.
+- This is a **prefix** check, not the fuller `API_[A-Za-z0-9]{32}` shape check
+  this document previously discussed and deferred. The SAMEKEY full-shape case
+  is still a SecuritySpy-server-side behavior the library cannot influence, and
+  that part of the original rationale (a client-side full-shape check would
+  not change server behavior) still holds -- the library should not attempt to
+  detect or special-case the *full* key shape. Detecting the *prefix* alone is
+  different: it lets the library raise a clearer, actionable error (e.g. "this
+  password starts with a SecuritySpy API-key prefix and will be rejected by
+  the API surface even though it may work in the web UI -- check the password
+  is not a key value") instead of a bare `SecuritySpyAuthError`, entirely
+  within the library's own exception-mapping layer and without querying or
+  guessing at SecuritySpy's internal key-lookup behavior.
+- The other two sub-ACs (camera visibility scoping under a key; regenerate/delete)
+  remain as documented below and do not bear on this specific recommendation --
+  the `API_`-prefix lock-out is independent of both.
+- This is a recommendation only, scoped narrowly to *diagnostics* (a clearer
+  exception message), not to *authentication behavior* (the library still
+  never rejects, alters, or special-cases a caller-supplied password before
+  sending it). Implementing even this narrow scope is a new story, adopted
+  only through a follow-up correct-course per this story's own boundaries --
+  not implemented here.
 - This does not change the AD-13 item 2 recommendation above (the relay may
   authenticate upstream with a key): that recommendation concerns how the
-  relay *uses* a key it is given, not whether the library tries to detect one
-  from its shape, and the two are independent.
+  relay *uses* a key it is given, not how the client reports an authentication
+  failure, and the two remain independent.
 
-PRD Open Q11 stays "reopened." This recommendation does not close it; that
-remains a follow-up correct-course decision per this story's own boundaries.
+PRD Open Q11 stays "reopened." This recommendation does not close it; adopting
+any part of it -- including the narrow diagnostic warning above -- remains a
+follow-up correct-course decision per this story's own boundaries.
