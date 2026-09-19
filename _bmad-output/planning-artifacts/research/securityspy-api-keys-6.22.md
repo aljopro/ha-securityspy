@@ -27,7 +27,7 @@ on the API/RTSP surface for the same account.
 | `++eventStream` | Basic, key as password | 200 | Streaming endpoint accepts the key |
 | RTSP `DESCRIBE` | Basic, key as password | 200 OK | Key authenticates the RTSP control channel too |
 | `++settings-general` (admin-only) | Basic, key as password, `Live`-permission account | 403 | Matches what the account's real password would get — `_map_status` (client.py:1263–1268) disambiguates by the account's permission level, not by whether a key or password was presented, so no change is needed there |
-| Any endpoint | `?auth=API_...` (raw key in query string) | 401 | Contradicts the vendor's own help text; observed on both HTTP and RTSP. This is a vendor discrepancy, not a library bug — the library's `unsecured_stream_url()` and relay paths never build this form, so nothing here is affected |
+| Any endpoint | `?auth=API_...` (raw key in query string) | 401 | Contradicts the vendor's own help text; observed on both HTTP and RTSP. **Fixed in 6.22b11 (see addendum).** This was a vendor discrepancy, not a library bug — the library's `unsecured_stream_url()` and relay paths never build this form, so nothing here is affected |
 | Any endpoint | `?auth=base64(username:key)`, `?auth=base64(:key)`, or `?auth=base64(made-up-username:key)` (key wrapped the same way Basic auth wraps it) | 200 | Base64-wrapping works in the query string even though the raw key does not; the username is ignored here exactly as it is in the Basic-auth header form |
 | Web UI `/` | Basic, key as password | 403 | The server actively refuses a key at the web login, versus 200 for the real password and 200 for no auth at all |
 
@@ -251,3 +251,26 @@ confirmed partial-key-password finding above changes this document's original
 PRD Open Q11 stays "reopened." This recommendation does not close it; adopting
 any part of it -- including the narrow diagnostic warning above -- remains a
 follow-up correct-course decision per this story's own boundaries.
+
+## Addendum (2026-09-18): vendor fixes in 6.22b11
+
+Ben replied on forum thread 4922 (2026-09-17) and shipped beta 6.22b11:
+
+1. The `auth=` parser now accepts the naked `API_xyz` form.
+2. Creating a regular web password with the `API_` prefix is now disallowed
+   (he called it a trap).
+3. The `API_` prefix is fixed and can be relied on.
+
+Live re-probe against 6.22b11 (`test-live` key, 2026-09-18): raw `auth=<key>`
+returns 200 on `++systemInfo`, `++image` and `++eventStream` (401 on b10);
+`auth=base64(:KEY)`, Basic `user:KEY` and Basic `:KEY` return 200; the ordinary
+user and password still return 200; a well-formed wrong key and no auth return
+401; the web UI with a key returns 403. Not re-tested: that the server now
+refuses an `API_`-prefixed web password (needs an admin action).
+
+Consequences: the raw-query form is no longer a vendor discrepancy, and the
+prefix is a stable contract, which supports the `API_`-prefix diagnostic in the
+client's exception mapping (implemented; see deferred-work.md). The diagnostic
+still matters for accounts whose passwords were set before b11 and for servers
+below 6.22.
+
